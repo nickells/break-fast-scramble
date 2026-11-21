@@ -77,7 +77,7 @@ const UI_DEF = {
   out: 165,
   mode: 'chop',
   chaos: 0.35,
-  lock: true,
+  keepIntro: false,
   lockN: 8,
   retrig: true,
   pitch: true,
@@ -92,9 +92,11 @@ const UI_DEF = {
   comp: 0,
   verb: 0,
   keyShow: false, // source slices + key panel: hidden until asked for
-  ideasShow: true, // the idea corpus knobs (each idea's own default lives in ideas.js)
 };
 const UI = Object.assign({}, UI_DEF, JSON.parse(localStorage.getItem('ascr.ui') || '{}'));
+const legacyIntroLock = UI.lock === true;
+delete UI.lock;
+delete UI.ideasShow;
 delete UI.keyOpen; // replaced by keyShow (default hidden)
 if ('quant' in UI) {
   if (!JSON.parse(localStorage.getItem('ascr.ui') || '{}').q) UI.q = UI.quant ? 'bar' : 'none';
@@ -124,8 +126,8 @@ const S = {
   get chaos() {
     return UI.chaos;
   },
-  get lock() {
-    return UI.lock ? Math.max(1, UI.lockN | 0) : 0;
+  get introSteps() {
+    return UI.keepIntro ? Math.min(SPB, Math.max(1, UI.lockN | 0)) : 0;
   },
 };
 const OPT = {

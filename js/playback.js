@@ -56,6 +56,66 @@ function schedStep(c, dest, e, t, dur, raw, i) {
   }
 }
 let P = null;
+let sourcePreview = null;
+function showSourcePlayback(playing) {
+  const button = $('#source-play');
+  if (!button) return;
+  button.classList.toggle('on', playing);
+  button.closest('.card').classList.toggle('playing', playing);
+  button.title = playing ? 'Stop original sample' : 'Play original sample';
+  button.setAttribute('aria-label', button.title);
+}
+function finishSourcePreview(preview) {
+  if (sourcePreview !== preview) return;
+  sourcePreview = null;
+  cancelAnimationFrame(preview.frame);
+  preview.cells[preview.index]?.classList.remove('now');
+  preview.cells[preview.beat]?.classList.remove('pulse', 'pulseBar');
+  preview.source.disconnect();
+  showSourcePlayback(false);
+}
+function toggleSourcePreview() {
+  if (sourcePreview) {
+    stop();
+    return;
+  }
+  if (!buf) return;
+  stop();
+  ctx.resume();
+  const source = ctx.createBufferSource();
+  source.buffer = buf;
+  source.connect(outG);
+  const preview = {
+    source,
+    cells: $('#srcmap .source-card').querySelectorAll('.grid .cell'),
+    startedAt: ctx.currentTime,
+    index: -1,
+    beat: -1,
+    frame: 0,
+  };
+  const draw = () => {
+    if (sourcePreview !== preview) return;
+    const elapsed = ctx.currentTime - preview.startedAt;
+    let index = Math.max(0, preview.index);
+    while (index + 1 < preview.cells.length && slices[index + 1]?.start <= elapsed) index++;
+    if (index !== preview.index) {
+      preview.cells[preview.index]?.classList.remove('now');
+      preview.cells[index]?.classList.add('now');
+      preview.index = index;
+      if (index % 4 === 0 && preview.cells[index]) {
+        preview.cells[preview.beat]?.classList.remove('pulse', 'pulseBar');
+        pulse(preview, index);
+        preview.beat = index;
+      }
+    }
+    preview.frame = requestAnimationFrame(draw);
+  };
+  source.onended = () => finishSourcePreview(preview);
+  sourcePreview = preview;
+  showSourcePlayback(true);
+  source.start(preview.startedAt);
+  draw();
+}
 /* on every beat, the one step under the playhead pops; bar starts pop a bit more */
 function pulse(card, i) {
   const c = card.cells[i];
@@ -104,6 +164,11 @@ function play(card, row = 0) {
   tick();
 }
 function stop() {
+  if (sourcePreview) {
+    const preview = sourcePreview;
+    preview.source.stop();
+    finishSourcePreview(preview);
+  }
   if (!P) return;
   clearInterval(P.timer);
   const cs = new Set([P.card, P.shownCard, P.queued].filter(Boolean));

@@ -3,17 +3,18 @@
 /* ---------- styles ----------
    The controls are STYLES: JUNGLE, DRUMFUNK, LIQUID, ROLLERS, HALFTIME, DRILL. Each style is a profile: a value for every
    setting inside the generator (how finely the break is cut, how often each idea lands, how many rolls…). The style
-   knobs are weights, and every setting is the weighted average of the styles' values, so styles blend inside the same
-   pattern instead of taking turns. Each knob shows its style's share of the mix.
+   pad sets the weights, and every setting is the weighted average of the styles' values, so styles blend inside the
+   same pattern instead of taking turns. Each tip shows its style's share of the mix.
 
    Inside, the generator works in a fixed order:
      CUT        the break cut into pieces (piece size from the blend)
      FEEL       SMOOTH and HATS, 8th by 8th
      SHAPE      LOOP, CALL, TURN AROUND: which bars restate bar 1 (once per pattern)
      MOVES      echoes, keeps and fills, bar by bar
-     LATE       HALFTIME (the backbeat moved to beat 3), GHOSTS, PICKUPS
+     LATE       GHOSTS, PICKUPS
      ORNAMENTS  rolls, reverses, drags, gaps (generator.js)
-   Every decision draws from its own random stream from the seed, so turning a style knob morphs each card instead of
+     GROOVE     protect style anchors and add drumfunk shuffles
+   Every decision draws from its own random stream from the seed, so moving the style puck morphs each card instead of
    reshuffling it.
 
    What the sources showed (measured inside each file: exact repeats of earlier 16ths, and the drum on every 16th;
@@ -35,7 +36,7 @@ const STYLES = [
   },
   {
     k: 'sFunk', id: 'drumfunk', label: 'DRUMFUNK', def: 0,
-    tip: 'Jungle\'s busier, live-feeling cousin: smaller pieces, lots of quiet ghost notes between the hits, pickups into most strong hits, constant small changes and few exact repeats. A reading of the style, not measured from a reference.',
+    tip: 'Jungle\'s busier, live-feeling cousin: smaller pieces, quiet pickups, short hat and ghost-snare shuffles, and few exact repeats.',
     v: { cut: 0.65, smooth: 0, hats: 0, loop: 0, call: 0.3, turn: 0, echo6: 0.35, kick3: 0.2, keep: 0.5, sn24: 0.2, cell2: 0.3, snfwd: 0.4, ht: 0, ghost: 0.45, pick: 0.7, rollEnd: 0.35, rollScatter: 0.1, rev: 0.15, drag: 0.05, gap: 0.1 },
   },
   {
@@ -50,8 +51,8 @@ const STYLES = [
   },
   {
     k: 'sHalf', id: 'halftime', label: 'HALFTIME', def: 0,
-    tip: 'Halftime: one snare per bar, on beat 3, so 170 feels like 85. Lots of space, a few long drags and gaps. START LOCK keeps the opening of the source (snare on 2 included): turn it off for strict halftime. A reading of the style, not measured from a reference.',
-    v: { cut: 0.3, smooth: 0.4, hats: 0.3, loop: 0.5, call: 0.7, turn: 0.1, echo6: 0.1, kick3: 0.3, keep: 0.3, sn24: 0, cell2: 0.1, snfwd: 0, ht: 1, ghost: 0.1, pick: 0.3, rollEnd: 0.2, rollScatter: 0, rev: 0.2, drag: 0.3, gap: 0.3 },
+    tip: 'Halftime: one snare per bar, on beat 3, so 170 feels like 85. Lots of space, a few long drags and gaps. KEEP INTRO can bring back the original opening snare on beat 2.',
+    v: { cut: 0.3, smooth: 0.4, hats: 0.3, loop: 0.5, call: 0.7, turn: 0.1, echo6: 0.1, kick3: 0.1, keep: 0.3, sn24: 0, cell2: 0.1, snfwd: 0, ht: 1, ghost: 0.1, pick: 0.3, rollEnd: 0.2, rollScatter: 0, rev: 0.2, drag: 0.3, gap: 0.3 },
   },
   {
     k: 'sDrill', id: 'drill', label: 'DRILL', def: 0,
@@ -60,7 +61,7 @@ const STYLES = [
   },
 ];
 const PKEYS = Object.keys(STYLES[0].v);
-/* the blended settings: every value is the styles' values weighted by their knobs (all at 0 → JUNGLE) */
+/* Every generator setting is the weighted average of the active styles. */
 let MIX = { ...STYLES[0].v };
 const styleTotal = () => STYLES.reduce((a, s) => a + (UI[s.k] || 0), 0);
 function mixStyles() {
@@ -74,6 +75,49 @@ const styleShare = k => {
   const tot = styleTotal();
   return tot > 0 ? (UI[k] || 0) / tot : k === STYLES[0].k ? 1 : 0;
 };
+// Each triangular sector blends its two tips and the equal mix at the center.
+const defaultStyleOrder = [0, 1, 5, 4, 2, 3].map(i => STYLES[i].id);
+const savedStyleOrder = UI.styleOrder;
+const styleOrder = Array.isArray(savedStyleOrder) && savedStyleOrder.length === defaultStyleOrder.length &&
+  new Set(savedStyleOrder).size === defaultStyleOrder.length && savedStyleOrder.every(id => defaultStyleOrder.includes(id))
+  ? savedStyleOrder : defaultStyleOrder;
+const styleTips = styleOrder.map((id, i) => {
+  const angle = i * Math.PI / 3;
+  return { ...STYLES.find(s => s.id === id), x: Math.sin(angle), y: -Math.cos(angle) };
+});
+const stylePosition = () => styleTips.reduce(
+  ([x, y], s) => [x + s.x * styleShare(s.k), y + s.y * styleShare(s.k)], [0, 0],
+);
+function padWeights(x, y) {
+  const angle = Math.atan2(x, -y);
+  const sector = Math.floor(((angle + 2 * Math.PI) % (2 * Math.PI)) / (Math.PI / 3));
+  const next = (sector + 1) % styleTips.length;
+  const a = styleTips[sector], b = styleTips[next];
+  const det = a.x * b.y - a.y * b.x;
+  const left = Math.max(0, (x * b.y - y * b.x) / det);
+  const right = Math.max(0, (a.x * y - a.y * x) / det);
+  const scale = Math.max(1, left + right);
+  const center = Math.max(0, 1 - (left + right) / scale) / styleTips.length;
+  const weights = styleTips.map(() => center);
+  weights[sector] += left / scale;
+  weights[next] += right / scale;
+  // Eliminate floating-point remnants at the boundary and at solo positions.
+  return weights.map(v => v < 1e-10 ? 0 : v);
+}
+function setStylePosition(x, y) {
+  const weights = padWeights(x, y);
+  const changed = styleTips.some((s, i) => Math.abs(styleShare(s.k) - weights[i]) > 1e-8);
+  styleTips.forEach((s, i) => { UI[s.k] = weights[i]; });
+  return changed;
+}
+function swapStyleTips(from, to) {
+  const a = styleTips[from], b = styleTips[to];
+  styleTips[from] = { ...b, x: a.x, y: a.y };
+  styleTips[to] = { ...a, x: b.x, y: b.y };
+  UI.styleOrder = styleTips.map(s => s.id);
+  // Carry the existing blend to its new weighted position in the reordered layout.
+  return setStylePosition(...stylePosition());
+}
 // a few words for the card: the styles that make up most of the mix
 const mixWord = () =>
   STYLES.map(s => [s.id, styleShare(s.k)])
@@ -107,7 +151,7 @@ const chunkWord = c => {
   const t = chunkTarget(c);
   return t >= 11 ? 'BARS' : t >= 5.5 ? 'HALF' : t >= 2.8 ? 'BEATS' : t >= 1.4 ? '8THS' : '16THS';
 };
-function chopBar(r, b, c, prevBar, genes) {
+function chopBar(r, c, prevBar, genes) {
   const T = chunkTarget(c),
     lens = [];
   for (let left = SPB; left > 0; ) {
@@ -126,8 +170,7 @@ function chopBar(r, b, c, prevBar, genes) {
     lastLen = 0;
   for (const len of lens) {
     let start;
-    if (b === 0 && pos < S.lock) start = pos; // START LOCK: the opening as it is
-    else if (len === SPB)
+    if (len === SPB)
       // a whole bar of the break: usually the one after the bar before (an answer), otherwise any
       start =
         prevEnd != null && prevEnd % SPB === 0 && chance(r, 0.55)
@@ -149,13 +192,11 @@ function chopBase(Rc, genes) {
   const c = MIX.cut;
   genes.grp = [];
   genes.cut = chunkWord(c).toLowerCase();
-  const b0 = chopBar(Rc('b0'), 0, c, null, genes),
-    b1 = chopBar(Rc('b1'), 1, c, b0, genes),
-    b2 = chopBar(Rc('b2'), 2, c, b1, genes),
-    b3 = chopBar(Rc('b3'), 3, Math.min(1, c + 0.2), b2, genes);
-  const out = [...b0, ...b1, ...b2, ...b3];
-  if (S.lock) out.splice(0, S.lock, ...run(0, S.lock));
-  return out;
+  const b0 = chopBar(Rc('b0'), c, null, genes),
+    b1 = chopBar(Rc('b1'), c, b0, genes),
+    b2 = chopBar(Rc('b2'), c, b1, genes),
+    b3 = chopBar(Rc('b3'), Math.min(1, c + 0.2), b2, genes);
+  return [...b0, ...b1, ...b2, ...b3];
 }
 
 /* the two hat voices HATS alternates: chosen once per pattern, so every bar uses the same pair */
@@ -314,20 +355,7 @@ const IDEAS = [
       return `snare →${at}`;
     },
   },
-  /* ---- LATE: after the moves, so nothing undoes them ---- */
-  {
-    id: 'ht', stage: 'late',
-    // halftime: the snares on 2 and 4 turn into hats or ghosts, and one snare lands on beat 3
-    apply(r, bar, lo) {
-      if (lo > 8) return null;
-      for (const pos of [4, 12])
-        if (pos >= lo && hitAt(bar[pos]) && slices[bar[pos].s].role === 'S')
-          pair(bar, pos, pickBy(r, i => (roleScore(i, 'h') > roleScore(i, 'g') ? roleScore(i, 'h') : roleScore(i, 'g')) + (tailOK(i) ? 0.8 : -0.8) - slices[i].snare * 2), lo);
-      const s = pickBy(r, i => roleScore(i, 'S') + (tailOK(i) ? 0.8 : -0.8));
-      pair(bar, 8, s, lo);
-      return 'halftime';
-    },
-  },
+  /* ---- LATE: pickups and ghost notes around the fills ---- */
   {
     id: 'ghost', stage: 'late', each: true,
     // quiet ghost notes on the off 16ths, in place of tails
@@ -363,6 +391,8 @@ const IDEAS = [
 STYLES.forEach(s => {
   if (UI[s.k] == null) UI[s.k] = s.def;
 });
+// Old knob mixes could occupy dimensions the pad has no room for. Project to their weighted position.
+const styleMixMoved = setStylePosition(...stylePosition());
 saveUI();
 
 /* every idea after the base, in order. Each idea in each bar has its own random stream R(id:bar), and an `each`
@@ -376,8 +406,7 @@ function applyIdeas(R, p, genes) {
     src = [0, 1, 2, 3];
   const perBar = stage =>
     bars.forEach((bar, b) => {
-      const lo = src[b] === 0 ? S.lock : 0, // START LOCK keeps the opening steps: ideas land after them
-        groups = {};
+      const groups = {};
       for (const m of IDEAS) {
         if (m.stage !== stage) continue;
         if (m.bars === 'answer' && b % 2 === 0) continue;
@@ -387,7 +416,7 @@ function applyIdeas(R, p, genes) {
           rm = R(key);
         if (!m.each && rm() >= MIX[m.id]) continue;
         cx.sub = tag => R(key + ':' + tag);
-        const lab = m.apply(rm, bar, Math.max(lo, bar.lo || 0), bars[b - 1] || bar, bars[0], b, cx);
+        const lab = m.apply(rm, bar, bar.lo || 0, bars[b - 1] || bar, bars[0], b, cx);
         if (!lab) continue;
         if (m.group) groups[m.group] = (groups[m.group] || 0) + 1;
         used.push(`${lab} (bar ${b + 1})`);
@@ -411,20 +440,67 @@ function applyIdeas(R, p, genes) {
   genes.eng = sm >= 0.7 ? 'liq' : shape.call ? 'phrase' : 'chop';
   genes.tpl =
     mixWord() + ' · ' + (shape.loop ? 'A A ' : 'A B ') + (shape.call ? 'A ' : 'C ') + (shape.turn ? 'A«2' : 'D');
-  const out = bars.flat();
-  if (S.lock) out.splice(0, S.lock, ...run(0, S.lock));
-  return out;
+  return bars.flat();
 }
 
-/* live: turning a style knob rebuilds every generated card that isn't pinned, cloned or hand-edited, from its own
-   seed. Same card object, so a playing card keeps playing the new version. */
+function grooveForBar(R, bar) {
+  const feel = R('groove:' + bar)();
+  if (feel < MIX.ht) return 'halftime';
+  if (feel < MIX.ht + styleShare('sRoller')) return 'rollers';
+}
+
+// Set the last accent and level decisions after ornaments have shaped the bar.
+function finishGroove(R, p, genes, grooves) {
+  const funk = styleShare('sFunk');
+  if (!funk && !grooves.some(Boolean)) return;
+  const roles = new Set(slices.map(s => s.role));
+  const voice = (r, role) => pickBy(r, i =>
+    roles.has(role) && slices[i].role !== role ? -Infinity : roleScore(i, role) + 0.5 * tailOK(i),
+  );
+  const anchor = (i, role) => {
+    const e = p[i];
+    const s = slices[e.s]?.role === role ? e.s : voice(R('anchor:' + i % SPB), role);
+    if (e.s !== s || e.h || e.r || e.x > 1 || e.p || e.v) p[i] = ev(s);
+  };
+  for (let b = 0; b < BARS; b++) {
+    const start = b * SPB, end = start + SPB;
+    if (grooves[b] === 'halftime') {
+      const snare = start + 8;
+      anchor(snare, 'S');
+      for (let i = start; i < end; i++) {
+        if (i === snare) continue;
+        const e = p[i];
+        const role = slices[e.s]?.role;
+        if (role === 'S') e.v = Math.min(e.v || 0, -13);
+        if (role === 'K' && i > snare && i <= snare + 2) e.v = Math.min(e.v || 0, -5);
+      }
+      genes.grp.push('halftime (bar ' + (b + 1) + ')');
+    } else if (grooves[b] === 'rollers') {
+      for (const [pos, role] of [[0, 'K'], [4, 'S'], [10, 'K'], [12, 'S']])
+        anchor(start + pos, role);
+    }
+
+    const rs = R('shuffle:' + b);
+    if (!chance(rs, 0.85 * funk)) continue;
+    const starts = [1, 2, 5, 6, 7, 8, 9, 10, 13, 14]
+      .map(pos => start + pos)
+      .filter(i => [p[i], p[i + 1]].every(e => !e.h && (e.x || 1) === 1 && !hitAt(e)));
+    if (!starts.length) continue;
+    const at = starts[Math.floor(rs() * starts.length)];
+    p[at] = { ...ev(voice(rs, 'h')), v: -7 - Math.floor(rs() * 4) };
+    p[at + 1] = { ...ev(voice(rs, 'S')), v: -11 - Math.floor(rs() * 5) };
+    genes.grp.push('hat–ghost shuffle (bar ' + (b + 1) + ')');
+  }
+}
+
+/* Pattern controls rebuild eligible cards from their current seeds. Preserve card identity and playback. */
 const BUILD_IDS = new Set(['chop', 'liq', 'phrase', 'arr', 'cells', 'walk', 'phr']); // older cards too
-let liveQueued = false;
-function liveIdeas() {
-  if (liveQueued) return;
-  liveQueued = true;
+let refreshQueued = false;
+function refreshGeneratedCards() {
+  if (refreshQueued) return;
+  refreshQueued = true;
   requestAnimationFrame(() => {
-    liveQueued = false;
+    refreshQueued = false;
     let any = false;
     for (const c of cards) {
       if (!followsKnobs(c)) continue;
@@ -448,19 +524,17 @@ function liveIdeas() {
     if (markK) markIdea(markK); // rebuilt cells: show the highlight again
   });
 }
-/* hover a style knob: every card shows only the steps that style changes — the difference between the card and the
-   same seed with that style at 0. Pinned, cloned and hand-edited cards don't follow the knobs, so they stay dim. */
+/* Hover a mixed-in style to highlight what it changes on each eligible card. */
 let markK = null;
 const followsKnobs = c =>
   !c.ro && !c.pinned && !c.edited && !c.genes?.of && c.genes?.seed != null && BUILD_IDS.has(c.genes.eng);
 function markIdea(k) {
   markK = k;
   document.body.classList.toggle('marking', !!k);
-  const style = STYLES.find(s => s.k === k);
   for (const c of cards) {
     c.el.classList.remove('marking');
     c.cells.forEach(x => x.classList.remove('mk'));
-    if (!style || !followsKnobs(c) || !(UI[k] > 0)) continue;
+    if (!k || !followsKnobs(c)) continue;
     const keep = UI[k];
     UI[k] = 0;
     const off = generate(c.genes.seed).steps;
@@ -472,38 +546,159 @@ function markIdea(k) {
   }
   MIX = mixStyles(); // generate() above mixed with this style at 0
 }
-// every style knob shows its share of the mix, so turning one changes what the others read
-const redrawStyles = () => document.querySelectorAll('#ideas .knob').forEach(el => el._draw && el._draw());
-addEventListener('DOMContentLoaded', () => {
-  STYLES.forEach(s => {
-    fmtK[s.k] = () => Math.round(styleShare(s.k) * 100) + '%';
-    onK[s.k] = () => {
-      liveIdeas();
-      redrawStyles();
-    };
-  });
-  redrawStyles();
-});
-
-/* the style knobs */
+/* Vector pad and its six solo buttons. */
 (() => {
   const strip = $('#ideas');
   if (!strip) return;
-  const knob = s =>
-    `<div class="knob" data-k="${s.k}" data-min="0" data-max="1" data-step="0.01" data-def="${s.def}" data-label="${s.label}" data-ktip="${(
-      s.label +
-      ' — ' +
-      s.tip +
-      '\n\nThe style knobs are a blend: every setting inside is the average of the styles, weighted by these knobs. Each one shows its style\'s share of the mix (all at 0 = JUNGLE).'
-    ).replace(/"/g, '&quot;')}"></div>`;
-  strip.innerHTML = `<div class="mod"><span class="cap">STYLES · BLEND</span><div class="row">${STYLES.map(knob).join('')}</div></div>`;
-  // the highlight follows the last knob hovered and stays on across the gaps between knobs (no flashing);
-  // it clears when the pointer leaves the strip. A knob being dragged holds the pointer, so it clears on release instead.
-  strip.querySelectorAll('.knob').forEach(el => {
-    el.addEventListener('pointerenter', () => markK !== el.dataset.k && markIdea(el.dataset.k));
-    el.addEventListener('lostpointercapture', () => strip.matches(':hover') || markIdea(null));
+  strip.innerHTML = `<div class="style-mixer">
+    <div class="style-mixer-bar"><span class="cap">STYLE MIX</span><button type="button" id="ideasReset">RESET MIX</button></div>
+    <div class="style-field">
+      <span class="style-origin" hidden aria-hidden="true"></span>
+      <button type="button" class="style-pad" data-tip="Drag toward a style to blend. Click a style to solo it. Arrow keys move the puck. Home resets to Jungle.">
+        <span class="style-hex" aria-hidden="true">${styleTips.map((_, i) => `<span style="--spoke:${i * 60 - 90}deg"></span>`).join('')}</span>
+        <span class="style-puck" aria-hidden="true"></span>
+      </button>
+      ${styleTips.map(s => `<button type="button" class="style-tip" aria-keyshortcuts="Shift+ArrowLeft Shift+ArrowRight" style="--tip-x:${s.x};--tip-y:${s.y}"><span class="style-name">${s.label}</span><span class="style-share"></span></button>`).join('')}
+    </div>
+  </div>`;
+  const pad = strip.querySelector('.style-pad');
+  const puck = pad.querySelector('.style-puck');
+  const origin = strip.querySelector('.style-origin');
+  const tips = [...strip.querySelectorAll('.style-tip')];
+  const draw = () => {
+    const [x, y] = stylePosition();
+    puck.style.left = `${50 + x * 50}%`;
+    puck.style.top = `${50 + y * 50}%`;
+    const exact = styleTips.map(s => styleShare(s.k) * 100);
+    const equal = exact.every(value => Math.abs(value - 100 / styleTips.length) < 1e-8);
+    const shares = exact.map(Math.floor);
+    const remainder = 100 - shares.reduce((a, b) => a + b, 0);
+    exact.map((value, i) => ({ i, fraction: value - shares[i] }))
+      .sort((a, b) => b.fraction - a.fraction).slice(0, remainder).forEach(({ i }) => shares[i]++);
+    const labels = shares.map((share, i) => {
+      if (equal) return '16⅔%';
+      if (share === 0 && exact[i] > 0) return '<1%';
+      if (share === 100 && exact[i] < 100 - 1e-8) return '>99%';
+      return `${share}%`;
+    });
+    tips.forEach((el, i) => {
+      el.querySelector('.style-name').textContent = styleTips[i].label;
+      el.querySelector('.style-share').textContent = labels[i];
+      el.dataset.tip = styleTips[i].tip + ' Click to solo. Drag onto another style to swap places. Shift + Left/Right moves it one slot.';
+      el.classList.toggle('mixed', exact[i] > 0);
+      el.setAttribute('aria-pressed', String(exact[i] >= 100 - 1e-8));
+    });
+    pad.setAttribute('aria-label', 'Style blend. ' + styleTips.map((s, i) => `${s.label} ${labels[i]}`).join(', '));
+  };
+  const move = (x, y) => {
+    if (markK) markIdea(null);
+    if (!setStylePosition(x, y)) return;
+    draw();
+    saveUI();
+    refreshGeneratedCards();
+  };
+  const reset = () => {
+    const jungle = styleTips.find(s => s.id === 'jungle');
+    move(jungle.x, jungle.y);
+  };
+  strip.querySelector('#ideasReset').onclick = reset;
+  const swap = (from, to) => {
+    if (from === to) return;
+    if (markK) markIdea(null);
+    const changed = swapStyleTips(from, to);
+    draw();
+    saveUI();
+    if (changed) refreshGeneratedCards();
+  };
+  tips.forEach((el, i) => {
+    let drag, suppressClick = false;
+    el.onclick = e => {
+      if (suppressClick && e.detail) return;
+      const { x, y } = styleTips[i];
+      move(x, y);
+    };
+    el.onpointerenter = e => {
+      const { k } = styleTips[i];
+      if (e.pointerType === 'mouse' && styleShare(k) > 0 && styleShare(k) < 1) markIdea(k);
+    };
+    el.onpointerleave = () => { if (markK === styleTips[i].k) markIdea(null); };
+    el.onpointerdown = e => {
+      if (e.button !== 0 || !e.isPrimary) return;
+      suppressClick = false;
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, target: -1,
+        bounds: tips.map(tip => tip.getBoundingClientRect()) };
+      el.setPointerCapture(e.pointerId);
+    };
+    const updateDrag = e => {
+      if (drag?.id !== e.pointerId) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+      if (!drag.moved) {
+        if (markK) markIdea(null);
+        const { x, y } = styleTips[i], bounds = drag.bounds[i];
+        origin.style.setProperty('--tip-x', x);
+        origin.style.setProperty('--tip-y', y);
+        origin.style.width = `${bounds.width}px`;
+        origin.style.height = `${bounds.height}px`;
+        origin.hidden = false;
+        drag.moved = true;
+      }
+      el.classList.add('style-tip-lifted');
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      const target = drag.bounds.findIndex((r, j) => j !== i && e.clientX >= r.left &&
+        e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom);
+      if (target === drag.target) return;
+      tips[drag.target]?.classList.remove('style-tip-target');
+      tips[target]?.classList.add('style-tip-target');
+      drag.target = target;
+    };
+    const endDrag = (e, drop) => {
+      if (drag?.id !== e.pointerId) return;
+      if (drop) updateDrag(e);
+      const { target, moved } = drag;
+      drag = null;
+      suppressClick = moved;
+      if (moved) origin.hidden = true;
+      el.classList.remove('style-tip-lifted');
+      el.style.transform = '';
+      tips[target]?.classList.remove('style-tip-target');
+      if (drop && target >= 0) {
+        swap(i, target);
+        tips[target].focus();
+      }
+    };
+    el.onpointermove = updateDrag;
+    el.onpointerup = e => endDrag(e, true);
+    el.onpointercancel = el.onlostpointercapture = e => endDrag(e, false);
+    el.onkeydown = e => {
+      if (!e.shiftKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+      e.preventDefault();
+      const target = (i + (e.key === 'ArrowLeft' ? tips.length - 1 : 1)) % tips.length;
+      swap(i, target);
+      tips[target].focus();
+    };
   });
-  strip.addEventListener('pointerleave', e => {
-    if (!strip.querySelector('.knob:active') && !e.target.hasPointerCapture?.(e.pointerId)) markIdea(null);
-  });
+  const atPointer = e => {
+    const rect = pad.getBoundingClientRect();
+    move(2 * (e.clientX - rect.left) / rect.width - 1, 2 * (e.clientY - rect.top) / rect.height - 1);
+  };
+  pad.onpointerdown = e => {
+    if (e.button !== 0 || !e.isPrimary) return;
+    pad.setPointerCapture(e.pointerId);
+    atPointer(e);
+  };
+  pad.onpointermove = e => { if (pad.hasPointerCapture(e.pointerId)) atPointer(e); };
+  pad.onkeydown = e => {
+    const directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    if (e.key === 'Home') {
+      e.preventDefault();
+      reset();
+    } else if (directions[e.key]) {
+      e.preventDefault();
+      const [dx, dy] = directions[e.key], [x, y] = stylePosition();
+      const step = e.shiftKey ? 0.025 : 0.12;
+      move(x + dx * step, y + dy * step);
+    }
+  };
+  draw();
 })();

@@ -162,12 +162,21 @@ function ghostOf(card, idx) {
   const rects = idx.map(i => card.cells[i].getBoundingClientRect()),
     x = Math.min(...rects.map(r => r.left)),
     y = Math.min(...rects.map(r => r.top));
+  const included = new Set(idx);
   const g = document.createElement('div');
   g.className = 'ghost';
   idx.forEach((i, k) => {
     const c = card.cells[i].cloneNode(true),
       r = rects[k];
     c.classList.remove('sel', 'drop', 'now', 'pulse', 'pulseBar', 'lifted', 'cut');
+    c.classList.toggle('join', i % SPB !== 0 && included.has(i - 1));
+    c.classList.toggle('joinR', (i + 1) % SPB !== 0 && included.has(i + 1));
+    if (!included.has(i - 1)) c.classList.remove('rev-join');
+    if (!included.has(i + 1)) c.classList.remove('rev-joinR');
+    if (card.steps[i].h) {
+      c.querySelector('.hn')?.remove();
+      drawHalfLabel(c, card.steps, i, included);
+    }
     Object.assign(c.style, {
       position: 'absolute',
       left: r.left - x + 'px',
@@ -260,7 +269,7 @@ document.addEventListener(
   e => {
     if (e.button !== 0) return;
     if (e.target.closest('#selbar')) return;
-    const inChrome = e.target.closest('header,#dj,#newtile,input,button:not(.rp)');
+    const inChrome = e.target.closest('header,#pattern-tools,#dj,#newtile,input,button:not(.rp)');
     if (e.metaKey && !inChrome) {
       // marquee, from anywhere
       e.preventDefault();
@@ -671,16 +680,29 @@ function editSel(fn) {
   saveCards();
   placeBar(true);
 }
+const selectedVoices = (steps, indices) => [...new Set(indices
+  .filter(i => steps[i].s >= 0)
+  .map(i => voiceStart(steps, i)))];
+function adjustLevel(steps, indices, delta) {
+  annotateHalf(steps);
+  for (const i of selectedVoices(steps, indices)) {
+    const level = steps[i].v || 0;
+    if (!delta) delete steps[i].v;
+    else if (delta > 0 && level < 12) steps[i].v = Math.min(12, level + delta);
+    else if (delta < 0 && level > -60) steps[i].v = Math.max(-60, level + delta);
+  }
+}
 const OPS = {
   regen: (p, ix) => {
     const q = regenSel(p, ix);
     ix.forEach(i => (p[i] = q[i]));
   },
   rev: (p, ix) => {
-    const all = ix.every(i => p[i].s < 0 || p[i].r);
-    ix.forEach(i => {
-      if (p[i].s >= 0) p[i].r = !all;
-    });
+    annotateHalf(p);
+    const starts = selectedVoices(p, ix);
+    const reverse = !starts.every(i => p[i].r);
+    for (const i of starts)
+      for (let j = i; j < i + (p[i].hlen || 1); j++) p[j].r = reverse;
   },
   pup: (p, ix, o, big) =>
     ix.forEach(i => {
@@ -690,20 +712,31 @@ const OPS = {
     ix.forEach(i => {
       if (p[i].s >= 0) p[i].p = Math.max(-24, (p[i].p || 0) - (big ? 12 : 1));
     }),
+  vup: (p, ix, o, big) => adjustLevel(p, ix, big ? 6 : 1),
+  vdn: (p, ix, o, big) => adjustLevel(p, ix, big ? -6 : -1),
+  vreset: (p, ix) => adjustLevel(p, ix, 0),
   half: (p, ix) => {
     const live = ix.filter(i => p[i].s >= 0);
     if (!live.length) return;
+    annotateHalf(p);
+    const withVoice = (s, voice, h) => ({ ...ev(s), h, r: !!voice.r, p: voice.p || 0, ...(voice.v ? { v: voice.v } : {}) });
     if (live.every(i => p[i].h)) {
-      const s0 = p[live[0]].s;
-      ix.forEach((i, k) => (p[i] = { s: (s0 + k) % N, r: false, h: false, x: 1, p: 0 }));
-    } // undo half: plain run from the same start
-    else {
-      const s0 = p[live[0]].s,
-        rv = p[live[0]].r;
-      ix.forEach(
-        (i, k) =>
-          (p[i] = { s: (s0 + Math.floor(k / 2)) % N, r: rv, h: true, x: 1, p: p[live[0]].p || 0 }),
-      );
+      for (const i of selectedVoices(p, live)) {
+        const voice = p[i];
+        for (let k = 0; k < voice.hlen; k++) p[i + k] = withVoice(voice.s + k, voice, false);
+      }
+      return;
+    }
+    // A disjoint selection stretches each span independently.
+    for (let a = 0; a < ix.length;) {
+      let end = a + 1;
+      while (end < ix.length && ix[end] === ix[end - 1] + 1) end++;
+      const first = ix.slice(a, end).find(i => p[i].s >= 0);
+      if (first != null) {
+        const s = p[first].s, voice = p[voiceStart(p, first)];
+        for (let k = a; k < end; k++) p[ix[k]] = withVoice(s + Math.floor((k - a) / 2), voice, true);
+      }
+      a = end;
     }
   },
   x1: (p, ix) => ix.forEach(i => (p[i].x = 1)),
@@ -730,7 +763,7 @@ const OPS = {
     }),
   del: (p, ix) => ix.forEach(i => (p[i] = { s: -1, r: false, h: false, x: 1, p: 0 })),
 };
-/* typed slice values: one token per selected step, or one plain number = a run from it, or one token = that step everywhere */
+/* Type one slice number to start a run, or one number per selected step. */
 (() => {
   const inp = $('#selbar .sb-in');
   const bad = () => {
@@ -741,7 +774,8 @@ const OPS = {
   const vt = $('#selbar .sb-vt'),
     drawV = () => {
       $('#selbar').classList.toggle('vals', !!UI.vals);
-      vt.textContent = 'VALUES ' + (UI.vals ? '◂' : '▸');
+      vt.textContent = 'EDIT ' + (UI.vals ? '◂' : '▸');
+      vt.setAttribute('aria-expanded', String(!!UI.vals));
       vt.classList.toggle('on', !!UI.vals);
     };
   drawV();
@@ -771,29 +805,16 @@ const OPS = {
     e.preventDefault();
     const c = ED.card;
     if (!c?.sel?.size || c.ro) return;
-    let t;
-    try {
-      t = parse(inp.value.replace(/\|/g, ' '));
-    } catch (_) {
-      return bad();
-    }
+    const input = inp.value.trim();
+    if (!/^\d+(?:\s+\d+)*$/.test(input)) return bad();
+    const values = input.split(/\s+/).map(Number);
     const n = c.sel.size;
-    if (!t.length || (t.length !== 1 && t.length !== n)) return bad();
-    const plainRun = t.length === 1 && /^\d+$/.test(inp.value.trim()) && n > 1;
+    if ((values.length !== 1 && values.length !== n) || values.some(s => s >= N)) return bad();
     editSel((p, ix) =>
       ix.forEach((i, k) => {
-        const src = t.length === 1 ? t[0] : t[k];
-        p[i] =
-          src.s < 0
-            ? { s: -1, r: false, h: false, x: 1, p: 0 }
-            : {
-                s: (((plainRun ? src.s + k : src.s) % N) + N) % N,
-                r: !!src.r,
-                h: !!src.h,
-                x: src.x || 1,
-                p: src.p || 0,
-                ...(src.v ? { v: src.v } : {}),
-              };
+        const s = values.length === 1 ? (values[0] + k) % N : values[k];
+        if (p[i].s < 0) p[i] = ev(s);
+        else p[i].s = s;
       }),
     );
     inp.blur();
@@ -836,39 +857,47 @@ function placeBar(force) {
     x1 = Math.max(...r.map(q => q.right)),
     y0 = Math.min(...r.map(q => q.top)),
     y1 = Math.max(...r.map(q => q.bottom));
-  bar.classList.toggle('one', c.sel.size === 1); // one step: the value box is always there; several: behind VALUES
+  bar.classList.toggle('one', c.sel.size === 1); // Show the slice field directly for a single step.
   bar.classList.add('show');
-  const w = bar.offsetWidth,
-    h = bar.offsetHeight,
-    cx = (x0 + x1) / 2;
-  let left = Math.max(8, Math.min(innerWidth - w - 8, cx - w / 2)),
-    below = y0 - h - 10 < 8,
-    top = below ? y1 + 10 : y0 - h - 10;
-  bar.style.left = left + 'px';
-  bar.style.top = top + 'px';
-  bar.style.setProperty('--ax', cx - left + 'px');
-  bar.classList.toggle('below', below);
   // reflect the selection's current state
-  const st = [...c.sel].map(i => c.steps[i]).filter(e => e.s >= 0),
+  const indices = [...c.sel],
+    st = indices.map(i => c.steps[i]).filter(e => e.s >= 0),
+    voices = selectedVoices(c.steps, indices).map(i => c.steps[i]),
     ps = [...new Set(st.map(e => e.p || 0))],
-    xs = [...new Set(st.map(e => e.x || 1))];
+    xs = [...new Set(st.map(e => e.x || 1))],
+    levels = [...new Set(voices.map(e => e.v || 0))];
   const inp = bar.querySelector('.sb-in');
   if (document.activeElement !== inp) {
-    inp.value = [...c.sel]
-      .sort((a, b) => a - b)
-      .map(i => tok(c.steps[i]))
-      .join(' ');
+    inp.value = st.length === indices.length
+      ? indices.sort((a, b) => a - b).map(i => c.steps[i].s).join(' ')
+      : '';
     inp.style.width = Math.max(4, inp.value.length + 2) + 'ch';
     inp.classList.remove('bad');
   }
-  bar.querySelector('.sb-p').textContent = ps.length === 1 ? (ps[0] > 0 ? '+' : '') + ps[0] : '~';
-  bar.querySelector('[data-op=rev]').classList.toggle('on', st.length && st.every(e => e.r));
-  bar.querySelector('[data-op=half]').classList.toggle('on', st.length && st.every(e => e.h));
-  [1, 2, 3, 4].forEach(x =>
-    bar
-      .querySelector(`[data-op=x${x}]`)
-      .classList.toggle('on', xs.length === 1 && xs[0] === x && st.length > 0),
-  );
+  bar.querySelector('.sb-p').textContent = ps.length === 1 ? (ps[0] > 0 ? '+' : '') + ps[0] + ' st' : ps.length ? '~ st' : '— st';
+  const gain = bar.querySelector('[data-op=vreset]');
+  const levelText = levels.length === 1 ? `${levels[0] > 0 ? '+' : ''}${levels[0]} dB` : levels.length ? '~ dB' : '— dB';
+  gain.textContent = levelText;
+  gain.setAttribute('aria-label', `Reset gain to 0 dB (${levels.length > 1 ? 'mixed levels' : levelText})`);
+  gain.disabled = levels.every(v => v === 0);
+  bar.querySelector('[data-op=vdn]').disabled = levels.every(v => v <= -60);
+  bar.querySelector('[data-op=vup]').disabled = levels.every(v => v >= 12);
+  const indicate = (op, on) => {
+    const button = bar.querySelector('[data-op=' + op + ']');
+    button.classList.toggle('on', on);
+    button.setAttribute('aria-pressed', String(on));
+  };
+  indicate('rev', voices.length > 0 && voices.every(e => e.r));
+  indicate('half', st.length > 0 && st.every(e => e.h));
+  [1, 2, 3, 4].forEach(x => indicate('x' + x, xs.length === 1 && xs[0] === x));
+  const w = bar.offsetWidth, h = bar.offsetHeight, cx = (x0 + x1) / 2;
+  const left = Math.max(8, Math.min(innerWidth - w - 8, cx - w / 2));
+  const below = y0 - h - 10 < 8;
+  const top = below ? y1 + 10 : y0 - h - 10;
+  bar.style.left = left + 'px';
+  bar.style.top = top + 'px';
+  bar.style.setProperty('--ax', Math.max(8, Math.min(w - 8, cx - left)) + 'px');
+  bar.classList.toggle('below', below);
 }
 (function barLoop() {
   placeBar();
@@ -952,10 +981,8 @@ function newBatch() {
   const hadOrig = cards.some(c => c.ro); // ORIGINAL stays if it was showing
   main.innerHTML = '';
   cards = [];
-  for (let k = 0; k < 12; k++) {
-    const seed = (batch * 7919 + k * 104729) >>> 0,
-      id = `${batch}.${String(k + 1).padStart(2, '0')}`;
-    const pat = generate(seed);
+  for (const [k, pat] of generateBatch(batch, 12).entries()) {
+    const id = `${batch}.${String(k + 1).padStart(2, '0')}`;
     main.appendChild(makeCard(pat, id));
   }
   if (hadOrig) main.prepend(makeOrig());
@@ -1013,16 +1040,11 @@ function restoreCards() {
   }
   return cards.length > 0;
 }
-function makeOrig() {
-  const el = makeCard(
-    { steps: run(0, LEN), genes: { eng: 'source', tpl: 'the break as it is' } },
-    'orig',
+function makeOrig(preview = false) {
+  return makeCard(
+    { steps: run(0, LEN), genes: { eng: 'source', tpl: 'the break as it is' }, ro: true, preview },
+    preview ? 'source-preview' : 'orig',
   );
-  const c = cards[cards.length - 1];
-  c.ro = true;
-  el.classList.add('ro');
-  renderCard(c);
-  return el;
 }
 /* ORIGINAL: hidden until asked for (the ORIGINAL button in the NEW tile). It lands where the tile is, like a new
    card; if it's already showing, the button just takes you to it. */
@@ -1038,8 +1060,7 @@ function showOrig() {
   el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   saveCards();
 }
-/* GENERATE while playing: the pattern you're hearing stays where it is (and keeps playing); every other slot gets a new pattern */
-/* GENERATE keeps pinned cards and the one you're hearing in their slots; every other slot gets a new pattern */
+/* Reroll keeps the original, pinned cards, and the playing card in their slots. */
 function regenerate() {
   const playing = P ? P.shownCard || P.card : null,
     keep = cards.filter(c => c.pinned || c.ro || c === playing);
@@ -1055,14 +1076,16 @@ function regenerate() {
   localStorage.setItem('ascr.b', batch);
   cards = [...keep];
   const list = [];
+  const count = Math.max(old.length, 13);
+  const fresh = generateBatch(batch, count - slot.size, keep.filter(c => !c.ro).map(c => c.steps));
   let k = 0;
-  for (let n = 0; n < Math.max(old.length, 13); n++) {
+  for (let n = 0; n < count; n++) {
     if (slot.has(n)) {
       list.push(slot.get(n).el);
       continue;
     }
-    const seed = (batch * 7919 + k * 104729) >>> 0;
-    list.push(makeCard(generate(seed), `${batch}.${String(++k).padStart(2, '0')}`));
+    const pat = fresh[k++];
+    list.push(makeCard(pat, `${batch}.${String(k).padStart(2, '0')}`));
   }
   cards = cards.filter(c => list.includes(c.el));
   main.replaceChildren(...list);

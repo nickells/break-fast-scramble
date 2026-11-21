@@ -6,7 +6,7 @@ let batch = +(localStorage.getItem('ascr.b') || 0),
 const RT_NAME = { 2: '32nds', 3: '16th triplets', 4: '64ths', 6: '32nd triplets', 8: '128ths' };
 // consecutive = next source slice, played plainly (no reverse/retrig/pitch change)
 function contig(a, b) {
-  if (a.h || b.h) return !!(a.h && b.h && a.s >= 0 && (b.s === a.s || b.s === a.s + 1) && b.hc);
+  if (a.h || b.h) return !!b.hc;
   return (
     a.s >= 0 &&
     b.s >= 0 &&
@@ -18,6 +18,16 @@ function contig(a, b) {
     (a.p || 0) === (b.p || 0)
   );
 }
+function drawHalfLabel(cell, steps, i, included) {
+  const col = i % SPB, second = (i - voiceStart(steps, i)) % 2 === 1;
+  if (second && col > 0 && (!included || included.has(i - 1))) return;
+  const pair = !second && col + 1 < SPB && steps[i + 1]?.hc &&
+    (!included || included.has(i + 1));
+  const label = document.createElement('span');
+  label.className = pair ? 'hn pair' : 'hn';
+  label.textContent = steps[i].s;
+  cell.appendChild(label);
+}
 function makeCard(pat, id) {
   const el = document.createElement('div');
   el.className = 'card';
@@ -28,16 +38,28 @@ function makeCard(pat, id) {
     el,
     orig: pat.orig || toStr(pat.steps),
     edited: !!pat.edited,
+    ro: !!pat.ro,
+    preview: !!pat.preview,
   };
-  el.innerHTML = `<div class="top"><button class="pl" title="play"><svg class="i-play" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="7 4 20 12 7 20 7 4"/></svg><svg class="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect width="13" height="13" x="5.5" y="5.5" rx="2"/></svg></button><span class="nm"></span><span class="ico"><button class="cl" title="clone: an editable copy right after this one (pin it to keep it through GENERATE)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="15" x2="15" y1="12" y2="18"/><line x1="12" x2="18" y1="15" y2="15"/><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><button class="sh" title="shuffle: a new pattern in this slot (⌘Z undoes)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 14 4 4-4 4"/><path d="m18 2 4 4-4 4"/><path d="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-7.6a4 4 0 0 1 3.3-1.7H22"/><path d="M2 6h1.972a4 4 0 0 1 3.4 1.898l.734 1.204"/><path d="M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45"/></svg></button><button class="pn" title="pin: GENERATE leaves this pattern where it is"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg></button><button class="dl" title="delete this pattern (⌘Z brings it back)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg></button></span></div><div class="gwrap"><div class="rps">${[
+  el.classList.toggle('ro', card.ro);
+  el.innerHTML = `<div class="top"><button class="pl" title="play (Space while hovering this card)"><svg class="i-play" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="7 4 20 12 7 20 7 4"/></svg><svg class="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect width="13" height="13" x="5.5" y="5.5" rx="2"/></svg></button><span class="nm"></span>${card.preview ? '' : `<span class="ico"><button class="cl" title="clone: an editable copy right after this one (pin it to keep it through REROLL)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="15" x2="15" y1="12" y2="18"/><line x1="12" x2="18" y1="15" y2="15"/><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><button class="sh" title="shuffle: a new pattern in this slot (⌘Z undoes)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 14 4 4-4 4"/><path d="m18 2 4 4-4 4"/><path d="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-7.6a4 4 0 0 1 3.3-1.7H22"/><path d="M2 6h1.972a4 4 0 0 1 3.4 1.898l.734 1.204"/><path d="M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45"/></svg></button><button class="pn" title="pin: REROLL leaves this pattern where it is"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg></button><button class="dl" title="delete this pattern (⌘Z brings it back)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg></button></span>`}</div><div class="gwrap">${card.preview ? '' : `<div class="rps">${[
     0, 1, 2, 3,
   ]
     .map(k => `<button class="rp" title="play from bar ${k + 1}">▶</button>`)
     .join(
       '',
-    )}</div><div class="lgut" title="loop region: drag to set which bars loop · click = loop one bar · double-click = all bars"><div class="lbr"></div></div><div class="grid"></div></div>
-  <div class="btns"><button class="cp">copy</button><button class="wv">wav</button><button class="rs" title="back to the generated pattern (⌘Z undoes)">reset</button></div>`;
+    )}</div><div class="lgut" title="loop region: drag to set which bars loop · click = loop one bar · double-click = all bars"><div class="lbr"></div></div>`}<div class="grid"></div></div>
+  ${card.preview ? '' : `<div class="btns"><button class="cp">copy</button><button class="wv">wav</button><button class="rs" title="back to the generated pattern (⌘Z undoes)">reset</button></div>`}`;
   card.btn = el.querySelector('.pl');
+  if (card.preview) {
+    el.classList.add('source-card');
+    card.btn.id = 'source-play';
+    card.btn.title = 'Play original sample';
+    card.btn.setAttribute('aria-label', card.btn.title);
+    card.btn.onclick = toggleSourcePreview;
+    renderCard(card);
+    return el;
+  }
   card.btn.onclick = () => launch(card);
   card.rbtn = [...el.querySelectorAll('.rp')];
   card.rbtn.forEach((b, k) => (b.onclick = () => launch(card, k)));
@@ -133,8 +155,8 @@ function makeCard(pat, id) {
   const drawPin = () => {
     pn.classList.toggle('on', card.pinned);
     pn.title = card.pinned
-      ? 'pinned: GENERATE leaves this pattern where it is (click to unpin)'
-      : 'pin: GENERATE leaves this pattern where it is';
+      ? 'pinned: REROLL leaves this pattern where it is (click to unpin)'
+      : 'pin: REROLL leaves this pattern where it is';
     el.classList.toggle('pinned', card.pinned);
   };
   drawPin();
@@ -266,12 +288,12 @@ function renderCard(card) {
   const nm = card.ro
     ? {
         name: 'ORIGINAL',
-        tags: ['the source break, untouched', 'drag from it to copy steps into any pattern'],
+        tags: card.preview ? ['the source break at its original speed'] : ['the source break, untouched', 'drag from it to copy steps into any pattern'],
       }
     : nameFor(card, steps);
   card.name = nm.name;
   el.querySelector('.nm').textContent = nm.name + (card.edited ? ' ✎' : '');
-  el.querySelector('.rs').disabled = !card.edited;
+  if (!card.preview) el.querySelector('.rs').disabled = !card.edited;
   el.querySelector('.nm').title = [...nm.tags, desc, 'seed ' + (g.seed ?? '—')]
     .filter(Boolean)
     .join(' · ');
@@ -282,7 +304,10 @@ function renderCard(card) {
     const row = document.createElement('div');
     row.className = 'row';
     for (let k = 0; k < SPB; k++) {
-      const e = steps[b * SPB + k],
+      const i = b * SPB + k,
+        e = steps[i],
+        start = voiceStart(steps, i),
+        voice = steps[start],
         c = document.createElement('div');
       if (e.s >= 0) {
         c.style.setProperty('--pc', posColor(e.s));
@@ -291,28 +316,28 @@ function renderCard(card) {
       c.className =
         'cell ' +
         (e.s < 0 ? 'rest' : slices[e.s % N].role) +
-        (e.r ? ' rev' : '') +
+        (voice.r ? ' rev' : '') +
         (e.x > 1 ? ' x' + e.x : '') +
         (e.p > 0 ? ' pu' : e.p < 0 ? ' pd' : '') +
         (e.h ? ' hs' : '');
       c.textContent = e.s < 0 ? '·' : e.s;
       if (e.h) {
-        let a = b * SPB + k;
-        while (a > 0 && steps[a].hc && steps[a - 1].h) a--;
         c.textContent = '';
-        if ((b * SPB + k - a) % 2 === 0 && k < SPB - 1)
-          c.innerHTML = `<span class="hn">${e.s}</span>`;
-        else if (k === SPB - 1 && (b * SPB + k - a) % 2 === 0) c.textContent = e.s;
+        drawHalfLabel(c, steps, i);
+        if (voice.r) c.insertAdjacentHTML('beforeend', '<span class="reverse-run" aria-hidden="true"></span>');
       }
-      const i = b * SPB + k,
-        pr = i > 0 ? steps[i - 1] : null,
+      const pr = i > 0 ? steps[i - 1] : null,
         cont = pr && contig(pr, e);
       if (cont && k > 0) {
         c.classList.add('join');
         card.cells[i - 1].classList.add('joinR');
+        if (e.hc && voice.r) {
+          c.classList.add('rev-join');
+          card.cells[i - 1].classList.add('rev-joinR');
+        }
       }
       if (!cont && k === 0 && i > 0) c.classList.add('cut');
-      if (e.v) c.style.setProperty('--lv', Math.min(1.25, Math.max(0.4, 1 + e.v / 24))); // quieter steps read darker
+      if (voice.v) c.style.setProperty('--lv', Math.min(1.25, Math.max(0.4, 1 + voice.v / 24))); // quieter steps read darker
       if (e.x > 1) {
         c.classList.add('rt');
         c.style.backgroundImage = rtBg(e.x);
@@ -325,9 +350,9 @@ function renderCard(card) {
               (60 / S.out / 4 / e.x) * 1000,
             )} ms each)`
           : '') +
-        (e.r ? ' · reversed' : '') +
+        (voice.r ? (e.h ? ' · reversed half-speed run' : ' · reversed') : '') +
         (e.p ? ` · ${e.p > 0 ? '+' : ''}${e.p} st` : '') +
-        (e.v ? ` · ${e.v > 0 ? '+' : ''}${e.v} dB` : '') +
+        (voice.v ? ` · ${voice.v > 0 ? '+' : ''}${voice.v} dB` : '') +
         ' · ' +
         (cont ? 'continues' : 'cut');
       row.appendChild(c);
@@ -335,7 +360,7 @@ function renderCard(card) {
     }
     grid.appendChild(row);
   }
-  el.querySelectorAll('.grid .row').forEach((r, k) => {
+  if (!card.preview) el.querySelectorAll('.grid .row').forEach((r, k) => {
     r.onmouseenter = () => card.rbtn[k].classList.add('hot');
     r.onmouseleave = () => card.rbtn[k].classList.remove('hot');
     r.onclick = () => {

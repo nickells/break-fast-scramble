@@ -32,20 +32,28 @@ function parse(str) {
 /* half-speed segments: consecutive 'h' steps (40h 40h 41h 41h …) are one sound — the source segment played once at 0.5× across them */
 function annotateHalf(p) {
   annotateRolls(p);
+  let start = -1;
   for (let i = 0; i < p.length; i++) {
     const e = p[i];
     delete e.hlen;
     delete e.hc;
-    if (!e.h || e.s < 0) continue;
-    const pr = p[i - 1];
-    if (pr && pr.h && (e.s === pr.s || e.s === pr.s + 1) && (pr.hlen || pr.hc)) {
+    if (!e.h || e.s < 0) {
+      start = -1;
+      continue;
+    }
+    if (start >= 0 && e.s === (p[start].s + Math.floor((i - start) / 2)) % N) {
       e.hc = true;
-      let j = i - 1;
-      while (!p[j].hlen) j--;
-      p[j].hlen++;
-    } else e.hlen = 1;
+      p[start].hlen++;
+    } else {
+      e.hlen = 1;
+      start = i;
+    }
   }
   return p;
+}
+function voiceStart(steps, i) {
+  while (i > 0 && steps[i].hc) i--;
+  return i;
 }
 /* rolls: consecutive retriggered steps are one roll. Each step learns where its hits sit in the whole roll
    (rj = index of its first hit, rn = hits in the roll), so playback can make the roll rise into what follows. */

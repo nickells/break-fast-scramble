@@ -123,9 +123,6 @@ function analyze() {
         : 'h';
   }
   drawSrcMap();
-  $('#status').textContent = `${N} slices · ${buf.duration.toFixed(2)}s · ${
-    slices.filter(s => s.snapped).length
-  } snapped to transients`;
 }
 function rtBg(x) {
   const st = [];
@@ -140,7 +137,7 @@ function rtBg(x) {
   }
   return `linear-gradient(90deg,${st.join(',')})`;
 }
-/* the key: the source slices (click to hear) plus a compact legend. Each group is a short column of example + label rows. */
+/* The source preview and the pattern key. */
 function keyHTML() {
   const c = (cls, t, st = '') => `<div class="cell ${cls}" style="${st}">${t}</div>`;
   const n = (cls, t, st = '') => c(cls.replace(/^\S+/, 'nt'), t, st); // colour-agnostic example: shape only, same in KIT and POSITION
@@ -148,7 +145,6 @@ function keyHTML() {
   const grp = (cap, items, cls = '') =>
     `<div class="kg ${cls}"><span class="cap">${cap}</span><div class="kr">${items.join('')}</div></div>`;
   return `<div class="key">${[
-    `<div class="kg kslices"><span class="cap">SOURCE SLICES · CLICK TO HEAR · JOINED = HIT + TAIL</span><div class="rows"></div><span id="status"></span></div>`,
     grp('DRUM', [it(c('K', 0), 'kick'), it(c('S', 4), 'snare'), it(c('g', 8), 'ghost'), it(c('h', 5), 'ride')], 'kitonly'),
     grp(
       'POSITION',
@@ -165,7 +161,7 @@ function keyHTML() {
     grp('FLOW', [
       it(n('S joinR', 4) + n('h join joinR', 5) + n('h join', 6), 'run'),
       it(n('S', 4) + n('K', 10), 'cut'),
-      it(n('K', 32, 'box-shadow:-2px 0 0 0 var(--acc)'), 'cut on the 1'),
+      it(n('K', 32, 'box-shadow:-2px 0 0 0 var(--acc)'), 'cut at bar start'),
     ]),
     grp('RETRIG', [
       it(n('S rt', 4, 'background-image:' + rtBg(2)), '×2 32nds'),
@@ -178,9 +174,9 @@ function keyHTML() {
       it(n('h pd', 9), 'pitch down'),
       it(c('rest', '·'), 'rest'),
       it(
-        n('g hs joinR', '<span class="hn">40</span>') +
+        n('g hs joinR', '<span class="hn pair">40</span>') +
           n('g hs join joinR', '') +
-          n('g hs join joinR', '<span class="hn">41</span>') +
+          n('g hs join joinR', '<span class="hn pair">41</span>') +
           n('g hs join', ''),
         'half speed',
       ),
@@ -203,30 +199,9 @@ function keyHTML() {
 }
 function drawSrcMap() {
   const el = $('#srcmap');
-  el.innerHTML = `${keyHTML()}`;
-  const rows = el.querySelector('.kslices .rows');
-  for (let b = 0; b * SPB < N; b++) {
-    const row = document.createElement('div');
-    row.className = 'row';
-    for (let i = b * SPB; i < Math.min(N, (b + 1) * SPB); i++) {
-      const c = document.createElement('div');
-      c.className = 'cell ' + slices[i].role;
-      if (i % SPB && !isAccent(i)) {
-        c.classList.add('join');
-        row.lastChild.classList.add('joinR');
-      }
-      c.textContent = i;
-      c.title = `slice ${i} (${slices[i].role}) — click to audition`;
-      c.onclick = () => {
-        ctx.resume();
-        const nx = i + 1 < N ? slices[i + 1].start : buf.duration;
-        schedStep(ctx, master, { s: i }, ctx.currentTime + 0.01, nx - slices[i].start, true);
-      };
-      row.appendChild(c);
-    }
-    rows.appendChild(row);
-  }
+  el.innerHTML = keyHTML();
   tagPos(el);
+  el.prepend(makeOrig(true));
 }
 
 /* position colours: a 'plasma'-style ramp (dark blue → purple → orange → yellow). Its lightness rises steadily, so it reads

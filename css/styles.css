@@ -56,11 +56,33 @@ button.pri {
   font-weight: 600;
 }
 #srcmap {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px 18px;
   padding: 10px 18px;
   border-bottom: 1px solid var(--line);
 }
+#srcmap .source-card {
+  width: max-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+#srcmap .source-card .top {
+  margin-bottom: 3px;
+}
+@media (max-width: 650px) {
+  #srcmap {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+#srcmap .source-card .gwrap,
+#srcmap .source-card .grid,
+#srcmap .source-card .grid .row {
+  cursor: default;
+}
 /* one fixed grid everywhere: 15px cells, 3px gutters; joins bridge the gutter instead of closing it, so columns always line up */
-#srcmap .row,
 .card .grid .row {
   display: flex;
   gap: 3px;
@@ -119,8 +141,25 @@ button.pri {
   background-color: #222;
   color: #555;
 }
-.cell.rev {
+.cell.rev:not(.hs) {
   box-shadow: inset 0 0 0 2px #fff;
+}
+.reverse-run {
+  position: absolute;
+  inset: 0;
+  border: 2px solid #fff;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.cell.rev-join .reverse-run {
+  left: -3px;
+  border-left: 0;
+}
+.cell.rev-joinR .reverse-run {
+  border-right: 0;
+}
+.cell.lifted .reverse-run {
+  display: none;
 }
 .cell.rt {
   background-repeat: no-repeat;
@@ -143,12 +182,15 @@ body:not(.posmode) .posonly {
   left: 0;
   top: 0;
   bottom: 0;
-  width: calc(200% + 3px);
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2;
   pointer-events: none;
+}
+.cell .hn.pair {
+  width: calc(200% + 3px);
 }
 .cell.pu {
   border-top: 3px solid #fff;
@@ -188,14 +230,12 @@ body:not(.posmode) .posonly {
   animation: barPulse 0.3s ease-out;
   z-index: 1;
 }
-#srcmap .cell {
-  cursor: pointer;
-}
-/* key: source slices first, then compact legend columns (example beside its label, max 4 rows per column) */
+/* Compact legend columns. */
 .key {
   display: flex;
   flex-wrap: wrap;
-  row-gap: 12px;
+  align-items: flex-start;
+  row-gap: 8px;
 }
 .kg {
   display: flex;
@@ -263,8 +303,10 @@ main {
   will-change: transform;
   filter: drop-shadow(0 8px 14px #000c) drop-shadow(0 2px 3px #0008);
 }
-.ghost .cell {
-  border-radius: 2px;
+/* Overlap both edges of the gutter so fractional drag transforms can't expose a seam. */
+.ghost .cell.join::before {
+  left: -4px;
+  width: 5px;
 }
 .ghost.cloning::after {
   content: '+';
@@ -312,8 +354,10 @@ main {
   z-index: 40;
   display: none;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 16px);
+  gap: 6px 0;
+  padding: 4px 2px;
   background: #26262c;
   border: 1px solid #3a3a44;
   border-radius: 7px;
@@ -348,27 +392,35 @@ main {
   animation-name: sbDrop;
 }
 #selbar button {
-  height: 22px;
-  padding: 0 7px;
+  min-width: 21px;
+  height: 23px;
+  padding: 0 5px;
   font-size: 10px;
   letter-spacing: 0.06em;
   border-radius: 4px;
   background: #1f1f24;
 }
-#selbar .sb-ico {
-  display: grid;
-  place-items: center;
-  padding: 0 6px;
-}
-#selbar .sb-ico svg {
-  width: 14px;
-  height: 14px;
-  pointer-events: none;
-}
 #selbar button.on {
   background: var(--acc);
   color: #111;
   border-color: var(--acc);
+}
+#selbar .sb-section {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  padding: 0 5px;
+  border-inline-end: 1px solid #3a3a44;
+}
+#selbar .sb-section:last-child {
+  border-inline-end: 0;
+}
+#selbar .sb-label {
+  color: #b5b5c1;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 #selbar .sb-grp {
   display: flex;
@@ -376,16 +428,24 @@ main {
   align-items: center;
 }
 #selbar .sb-p {
-  min-width: 22px;
+  white-space: nowrap;
+  min-width: 3ch;
   text-align: center;
   font-size: 10px;
-  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+#selbar .sb-db {
+  min-width: 4ch;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }
 #selbar .sb-in {
-  height: 22px;
+  height: 23px;
   min-width: 4ch;
+  max-width: 22ch;
   padding: 0 6px;
-  font: 11px/22px inherit;
+  font-size: 11px;
   font-family: inherit;
   background: #141418;
   color: #fff;
@@ -393,6 +453,12 @@ main {
   border-radius: 4px;
   outline: 0;
   text-align: center;
+}
+#selbar .sb-db:disabled {
+  background: transparent;
+  border-color: transparent;
+  color: var(--fg);
+  cursor: default;
 }
 #selbar:not(.vals) .sb-in {
   display: none;
@@ -745,22 +811,18 @@ body.dragging .rp:not(.q) {
   gap: 3px;
 }
 /* beat lines behind the cells, flush against the left edge of steps 0, 4, 8, 12 (like a DAW grid), all the same weight */
-.card .grid,
-#srcmap .rows {
+.card .grid {
   width: fit-content;
   padding: 5px 0 2px 3px;
   background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.32) 0 2px, transparent 2px);
-  background-size: 72px 100%;
+  background-size: calc((var(--cw, 15px) + 3px) * 4) 100%;
   background-position: 1px 0;
   background-repeat: repeat-x;
-}
-.card .grid {
-  background-size: calc((var(--cw, 15px) + 3px) * 4) 100%;
 }
 .card .grid .cell.cut {
   box-shadow: -2px 0 0 0 var(--acc);
 }
-.card .grid .cell.rev.cut {
+.card .grid .cell.rev.cut:not(.hs) {
   box-shadow:
     inset 0 0 0 2px #fff,
     -2px 0 0 0 var(--acc);
@@ -863,13 +925,65 @@ textarea {
   font-size: 22px;
   z-index: 9;
 }
-/* header = row of equal-height modules: caption row + 64px control row, everything centred on one line */
-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
+/* Style pad and pattern generation share a deck above the edit tools. */
+.generation-deck {
+  display: grid;
+  grid-template-columns: minmax(286px, 360px) minmax(0, 1fr);
   border-bottom: 1px solid var(--line);
-  padding: 12px 6px;
+  padding: 12px 18px;
+}
+.generation-controls {
+  align-content: center;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px 28px;
+  padding: 12px 26px;
+  border-left: 1px solid var(--line);
+}
+.generation-controls h1 {
+  flex-basis: 100%;
+  font-size: 17px;
+}
+.generation-mod {
+  display: grid;
+  gap: 6px;
+}
+.generation-mod .row {
+  display: flex;
+  align-items: center;
+  min-height: 64px;
+  gap: 12px;
+}
+.generation-mod .togs {
+  flex-wrap: wrap;
+}
+#pattern-tools,
+.pattern-tool-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+#pattern-tools {
+  justify-content: space-between;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.pattern-tool-group .cap {
+  margin-right: 3px;
+}
+@media (max-width: 700px) {
+  .generation-deck {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 10px 12px;
+  }
+  .generation-controls {
+    padding: 12px 4px 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    gap: 8px 20px;
+  }
 }
 .mod {
   display: grid;
@@ -1002,13 +1116,10 @@ body.dragging * {
   border-color: var(--acc);
 }
 #gen {
-  height: 36px;
-  padding: 0 18px;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 11px;
   letter-spacing: 0.1em;
-}
-#status {
-  color: var(--dim);
-  font-size: 10px;
 }
 .kedit .kr {
   column-gap: 16px;
@@ -1091,33 +1202,120 @@ body {
 .card.ro .nm {
   letter-spacing: 0.12em;
 }
-/* idea corpus: a second strip of header-style modules */
 #ideas {
+  align-self: center;
+  padding-right: 12px;
+}
+.style-mixer {
+  width: min(100%, 360px);
+}
+.style-mixer-bar {
   display: flex;
-  flex-wrap: wrap;
-  padding: 10px 6px;
-  border-bottom: 1px solid var(--line);
-  background: #141417;
-  /* stays at the top while the cards scroll under it: above cells, below tooltips, the selection bar and dragged cards */
-  position: sticky;
-  top: 0;
-  z-index: 6;
+  align-items: center;
+  justify-content: space-between;
 }
-#ideas .mod {
-  grid-template-rows: 12px 72px;
+.style-field {
+  position: relative;
+  height: 198px;
 }
-#ideas .mod > .row {
-  gap: 8px;
+.style-pad,
+.style-tip,
+.style-origin,
+.style-puck {
+  position: absolute;
+  translate: -50% -50%;
 }
-/* idea knobs: wider, with labels that wrap to two lines */
-#ideas .knob {
-  width: 54px;
+.style-pad {
+  top: 50%;
+  left: 50%;
+  width: 124px;
+  height: 124px;
+  border: 0;
+  background: none;
+  cursor: crosshair;
+  touch-action: none;
 }
-#ideas .knob .l {
-  text-align: center;
+.style-hex,
+.style-hex::before {
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(50% 0%, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%);
 }
-body.noideas #ideas {
-  display: none;
+.style-hex {
+  background: var(--dim);
+}
+.style-hex::before {
+  content: '';
+  inset: 1px;
+  background: var(--panel);
+}
+.style-hex > span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 50%;
+  height: 1px;
+  background: var(--line);
+  transform: rotate(var(--spoke));
+  transform-origin: left center;
+}
+.style-puck {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--acc);
+  box-shadow: 0 0 0 1px var(--acc);
+  pointer-events: none;
+}
+.style-tip,
+.style-origin {
+  left: calc(50% + var(--tip-x) * 120px);
+  top: calc(50% + var(--tip-y) * 82px);
+}
+.style-origin {
+  border: 1px dashed var(--dim);
+  border-radius: 4px;
+  pointer-events: none;
+}
+.style-tip {
+  min-width: 73px;
+  padding: 2px 5px;
+  color: #b4b4bd;
+  background: transparent;
+  border-color: transparent;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.style-tip.style-tip-lifted {
+  z-index: 1;
+  cursor: grabbing;
+  background: var(--panel);
+  box-shadow: 0 3px 10px #0008;
+}
+.style-tip.style-tip-target {
+  outline: 1px dashed var(--acc);
+  outline-offset: 2px;
+}
+.style-tip.mixed {
+  color: var(--fg);
+  border-color: var(--line);
+  background: var(--panel);
+}
+.style-tip:hover,
+.style-tip[aria-pressed='true'] {
+  border-color: var(--acc);
+}
+.style-share {
+  display: block;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.style-tip.mixed .style-share {
+  color: var(--acc);
 }
 body.nokey #srcmap {
   display: none;
@@ -1129,7 +1327,7 @@ body.nokey #srcmap {
   letter-spacing: 0.08em;
   border-radius: 4px;
 }
-/* hovering an idea knob: every card shows only the steps that idea wrote (or, for a BUILD knob, only its cards) */
+/* Hovering a mixed style highlights the steps it changes. */
 .card.marking .grid .cell:not(.mk),
 body.marking .card:not(.marking) .grid .cell {
   opacity: 0.22;

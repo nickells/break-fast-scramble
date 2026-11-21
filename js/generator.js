@@ -69,7 +69,7 @@ const hatScore = i => roleScore(i, 'h') + (tailOK(i) ? 1 : -1);
 /* ornaments: phrase-end rolls, scattered rolls, reverses, half-speed drags, gaps. How often each one happens comes from
    the style blend (MIX, see ideas.js), scaled by CHAOS: at CHAOS 50% a style's own value is used as it is. The ALLOW
    toggles still switch each kind off. */
-function ornament(R, p, genes) {
+function ornament(R, p, genes, grooves) {
   // each kind (and each bar of scattered rolls) on its own stream, so one starting to fire doesn't move the others
   let r = R('orn:end');
   const ch = S.chaos,
@@ -92,7 +92,7 @@ function ornament(R, p, genes) {
     if (!chance(r, amt(MIX.rollScatter))) continue;
     const hits = [];
     for (let i = b * SPB; i < (b + 1) * SPB; i++)
-      if (i >= S.lock && p[i].s >= 0 && !p[i].h && p[i].x === 1 && isAccent(p[i].s)) hits.push(i);
+      if (p[i].s >= 0 && !p[i].h && p[i].x === 1 && isAccent(p[i].s)) hits.push(i);
     if (!hits.length) continue;
     const n = 1 + Math.floor(r() * Math.min(3, hits.length));
     for (let k = 0; k < n; k++) {
@@ -108,28 +108,29 @@ function ornament(R, p, genes) {
   r = R('orn:rev');
   if (OPT.rev && chance(r, amt(MIX.rev))) {
     const at = pickW(r, [7, 15, 23, 31, 39, 47, 55, 62], () => 1);
-    if (at >= S.lock) {
-      const len = chance(r, 0.5) ? 1 : 2;
-      for (let k = 0; k < len; k++) if (p[at + k] && p[at + k].s >= 0) p[at + k].r = true;
-      o.push('rev');
-    }
+    const len = chance(r, 0.5) ? 1 : 2;
+    for (let k = 0; k < len; k++) if (p[at + k] && p[at + k].s >= 0) p[at + k].r = true;
+    o.push('rev');
   }
   r = R('orn:drag');
   if (OPT.half && chance(r, amt(MIX.drag))) {
     // half-speed drag: a segment played at 0.5x, twice as long, an octave down
-    const b0 = SPB * (1 + Math.floor(r() * 3)),
-      len = chance(r, 0.6) ? 8 : 4,
-      pos = b0 + SPB - len;
-    let s0 = p[pos].s;
-    if (s0 < 0 || p[pos].x > 1 || p[pos].h) s0 = (b0 % N) + SPB - len; // slow down whatever was already playing there
-    const rv = OPT.rev && chance(r, 0.3); // reversed half speed: a tape-rewind swell into the next downbeat (always ends the bar)
-    for (let k = 0; k < len; k++) p[pos + k] = { s: (s0 + Math.floor(k / 2)) % N, r: rv, h: true, x: 1, p: 0 };
-    o.push((rv ? 'rev-' : '') + 'half' + len / 2);
+    const bar = 1 + Math.floor(r() * 3);
+    if (grooves[bar] !== 'rollers') {
+      const b0 = bar * SPB,
+        len = chance(r, 0.6) && grooves[bar] !== 'halftime' ? 8 : 4,
+        pos = b0 + SPB - len;
+      let s0 = p[pos].s;
+      if (s0 < 0 || p[pos].x > 1 || p[pos].h) s0 = (b0 % N) + SPB - len; // slow down whatever was already playing there
+      const rv = OPT.rev && chance(r, 0.3); // reversed half speed: a tape-rewind swell into the next downbeat (always ends the bar)
+      for (let k = 0; k < len; k++) p[pos + k] = { s: (s0 + Math.floor(k / 2)) % N, r: rv, h: true, x: 1, p: 0 };
+      o.push((rv ? 'rev-' : '') + 'half' + len / 2);
+    }
   }
   r = R('orn:gap');
   if (OPT.gap && chance(r, amt(MIX.gap))) {
     const at = SPB + Math.floor(r() * 48);
-    if (at >= S.lock && p[at].s >= 0 && slices[p[at].s].role !== 'K' && !WANT[at % SPB]) {
+    if (p[at].s >= 0 && slices[p[at].s].role !== 'K' && !WANT[at % SPB]) {
       p[at] = { s: -1 };
       o.push('gap');
     }
@@ -148,7 +149,7 @@ function clean(p) {
 }
 function pickSnare(r) {
   const c = slices.map((s, i) => [s.snare + r() * 0.5, i]).sort((a, b) => b[0] - a[0]);
-  return c[Math.floor(r() * 3)][1];
+  return c[Math.floor(r() * Math.min(3, c.length))][1];
 }
 /* how well a pattern keeps the backbeat + starts right — used to reject junk */
 function score(p, skipLast, beats = [4, 12]) {
@@ -166,10 +167,10 @@ function score(p, skipLast, beats = [4, 12]) {
 
 /* one generator for everything: the STYLES blend sets every value inside (MIX, see ideas.js); CUT lays down the base,
    then every idea goes on top in order, then the ornaments. Each part draws from its own random stream (base, each idea
-   in each bar, ornaments), all derived from the seed. So turning a style knob morphs a card rather than reshuffling it,
-   and turning it back restores the pattern exactly. */
+   in each bar, ornaments), all derived from the seed. Moving the style puck morphs a card, and returning to the same
+   mix restores its pattern. */
 const stream = (seed, tag) => mulberry((seed ^ hashStr(tag)) >>> 0);
-function generate(seed) {
+function generate(seed, introSteps = S.introSteps) {
   MIX = mixStyles();
   const R = tag => stream(seed, tag),
     genes = { seed };
@@ -184,8 +185,56 @@ function generate(seed) {
     if (!best || sc > best.sc) best = { p, g, sc };
   }
   const g = best.g,
-    p = ornament(R, applyIdeas(R, best.p, g), g);
+    grooves = Array.from({ length: BARS }, (_, b) => grooveForBar(R, b)),
+    p = ornament(R, applyIdeas(R, best.p, g), g, grooves);
+  finishGroove(R, p, g, grooves);
+  if (introSteps) p.splice(0, introSteps, ...run(0, introSteps));
   return { steps: clean(p), genes: g };
+}
+
+// Pick a varied batch from ordinary seeds. A later fill can erase a move, so inspect the finished steps.
+function generateBatch(batch, count, kept = []) {
+  if (!count) return [];
+  const mix = mixStyles();
+  // Rollers restores the beat-four snare, so it can erase the early-snare move.
+  mix.snfwd *= 1 - styleShare('sRoller');
+  const moves = Object.keys(IDEA_SAY).filter(id => mix[id] >= 0.15);
+  const target = id => count >= 8 && mix[id] >= 0.25 ? 2 : 1;
+  const recipe = steps => ({ key: toStr(steps), ideas: detectIdeas(steps) });
+  const keptRecipes = kept.map(recipe);
+  const candidate = i => {
+    const pattern = generate((batch * 7919 + i * 104729) >>> 0);
+    return { pattern, ...recipe(pattern.steps) };
+  };
+  const pool = Array.from({ length: count }, (_, i) => candidate(i));
+  const counts = entries => Object.fromEntries(moves.map(id => [id, entries.filter(c => c.ideas[id]).length]));
+  const all = [...keptRecipes, ...pool];
+  const available = counts(all);
+  const seen = new Set(keptRecipes.map(c => c.key));
+  if (new Set(all.map(c => c.key)).size === seen.size + count && moves.every(id => available[id] >= target(id))) {
+    return pool.map(c => c.pattern);
+  }
+
+  for (let i = count; i < count * 3 + keptRecipes.length; i++) pool.push(candidate(i));
+  const covered = counts(keptRecipes);
+  const selected = [];
+  while (selected.length < count) {
+    let best = 0, bestScore = -Infinity;
+    for (const [i, c] of pool.entries()) {
+      if (seen.has(c.key)) continue;
+      const score = moves.reduce((sum, id) =>
+        sum + (c.ideas[id] && covered[id] < target(id) ? mix[id] / (1 + covered[id]) : 0), 0);
+      if (score > bestScore) {
+        best = i;
+        bestScore = score;
+      }
+    }
+    const [c] = pool.splice(best, 1);
+    seen.add(c.key);
+    for (const id of moves) if (c.ideas[id]) covered[id]++;
+    selected.push(c.pattern);
+  }
+  return selected;
 }
 /* ---------- regenerate a selection ----------
    Fresh patterns from the current ideas are spliced in at the selected steps only. They come from the same
@@ -214,14 +263,8 @@ function regenSel(p, ix, tries = 16) {
     return sc;
   };
   let best = null;
-  const lock = UI.lock;
-  UI.lock = false; // START LOCK pins the opening steps to the source; asking to regenerate them overrides it
   const cands = [];
-  try {
-    for (let t = 0; t < tries; t++) cands.push(generate((Math.random() * 2 ** 32) >>> 0).steps);
-  } finally {
-    UI.lock = lock;
-  }
+  for (let t = 0; t < tries; t++) cands.push(generate((Math.random() * 2 ** 32) >>> 0, 0).steps);
   for (const c of cands) {
     // a half-speed drag only makes sense whole: skip candidates that would cut one in two
     if (ix.some(i => c[i].h && ((c[i - 1]?.h && !sel.has(i - 1)) || (c[i + 1]?.h && !sel.has(i + 1)))))

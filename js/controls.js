@@ -21,7 +21,7 @@ const fmtK = {
   verb: v => Math.round(v * 100) + '%',
   vol: v => Math.round(v * 100) + '%',
 };
-const onK = {
+const onControlChange = {
   src: () => {
     if (buf) {
       stop();
@@ -33,13 +33,23 @@ const onK = {
   res: () => applyFilter(),
   comp: () => applyFx(),
   verb: () => applyFx(),
+  chaos: refreshGeneratedCards,
+  keepIntro: refreshGeneratedCards,
+  lockN: () => {
+    if (UI.keepIntro) refreshGeneratedCards();
+  },
+  retrig: refreshGeneratedCards,
+  pitch: refreshGeneratedCards,
+  rev: refreshGeneratedCards,
+  half: refreshGeneratedCards,
+  gap: refreshGeneratedCards,
 };
 const KTIP = {
   src: 'SOURCE BPM — the tempo of the loaded break. Change it only if you drop in a different break; it re-slices and makes a new batch.',
   out: 'BPM — playback and export tempo. Changes live while a pattern plays.',
   chaos:
     'CHAOS — how far patterns stray. Low: chunks keep their place in the beat, runs carry on, the backbeat stays strict. High: freer jumps, more fills and ornaments, looser backbeat. The STYLES knobs set what kind of pattern; CHAOS sets how loosely it is played.',
-  lockN: 'STEPS — how many 16ths LOCK keeps from the top of the break (8 = two beats).',
+  lockN: 'STEPS — how many opening 16ths KEEP INTRO takes from the source break (8 = two beats).',
   res: 'RES — filter resonance: the peak at the cutoff. Higher is more squelchy.',
   vol: 'VOL — output level (live playback only).',
   swing:
@@ -77,8 +87,7 @@ function setupKnob(el) {
     UI[k] = v;
     draw();
     saveUI();
-    if (k !== 'src' && onK[k]) onK[k](v);
-    if (commit && k === 'src') onK.src();
+    if (k !== 'src' || commit) onControlChange[k]?.(v);
   };
   let y0, v0, moved;
   el.onpointerdown = e => {
@@ -107,7 +116,7 @@ function setupKnob(el) {
         if (y0 == null) return;
         y0 = null;
         dragOff();
-        if (moved && k === 'src') onK.src();
+        if (moved && k === 'src') onControlChange.src();
       };
   el.onwheel = e => {
     e.preventDefault();
@@ -164,10 +173,9 @@ document.querySelectorAll('.seg[data-k]').forEach(seg => {
 function applyView() {
   document.body.classList.toggle('posmode', UI.colors === 'pos');
   document.body.classList.toggle('nokey', !UI.keyShow);
-  document.body.classList.toggle('noideas', !UI.ideasShow);
 }
 applyView();
-const syncDeps = () => $('.knob[data-k=lockN]').classList.toggle('off', !UI.lock);
+const syncDeps = () => $('.knob[data-k=lockN]').classList.toggle('off', !UI.keepIntro);
 document.querySelectorAll('.tog').forEach(b => {
   const k = b.dataset.k,
     draw = () => {
@@ -179,6 +187,7 @@ document.querySelectorAll('.tog').forEach(b => {
     saveUI();
     draw();
     applyView();
+    onControlChange[k]?.(UI[k]);
   };
   draw();
 });

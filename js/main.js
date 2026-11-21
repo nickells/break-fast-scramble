@@ -19,7 +19,7 @@ $('#gen').onclick = regenerate;
       el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     };
   main.appendChild(tile);
-  // the card list is rebuilt in several places (GENERATE, restore, undo): keep the tile in the last slot
+  // Keep the tile in the last slot when the card list is rebuilt.
   new MutationObserver(() => {
     if (main.lastElementChild !== tile) main.appendChild(tile);
   }).observe(main, { childList: true });
@@ -50,10 +50,15 @@ $('#gen').onclick = regenerate;
   };
 })();
 document.addEventListener('keydown', e => {
-  if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
-    e.preventDefault();
-    stop();
-  }
+  if (e.code !== 'Space' || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey ||
+    e.target.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return;
+  const hovered = $('#cards .card:hover');
+  const card = hovered && cards.find(c => c.el === hovered);
+  if (!card && e.target.closest?.('button:focus-visible,a:focus-visible')) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  if (card) launch(card);
+  else stop();
 });
 addEventListener('dragover', e => {
   e.preventDefault();
@@ -81,6 +86,7 @@ addEventListener('drop', async e => {
   delete UI.srcBpm;
   await loadArrayBuffer(u.buffer); // built-in amen: 140 bpm
   if (!restoreCards()) newBatch(false);
+  else if (styleMixMoved || legacyIntroLock) refreshGeneratedCards();
   sizeCells(); // size the cells to the cards right away (otherwise they sit at the fallback size until the first change)
   if (location.hash === '#selftest')
     selftest().catch(e => {

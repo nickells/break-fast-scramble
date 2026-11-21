@@ -6,30 +6,33 @@
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-<header>
-  <div class="mod"><span></span><div class="row"><h1>BREAK<br>FAST<br>SCRAMBLE</h1></div></div>
-  <div class="mod"><span class="cap">PATTERN</span><div class="row">
-    <div class="knob" data-k="chaos" data-min="0" data-max="1" data-step="0.01" data-def="0.35" data-label="CHAOS"></div>
-    <button class="pri" id="gen">GENERATE</button>
-    <button class="tog" data-k="ideasShow" data-tip="STYLES — show or hide the style knobs: JUNGLE, DRUMFUNK, LIQUID, ROLLERS, HALFTIME, DRILL. They blend: every setting inside the generator is the mix of the styles you turn up.">STYLES</button>
-  </div></div>
-  <div class="mod"><span class="cap">ALLOW</span><div class="row"><div class="togs">
-    <button class="tog" data-k="retrig" data-tip="RETRIG — stutter rolls: a slice retriggered inside one 16th, usually a snare at a phrase end. ×2 = 32nds, ×3 = 16th triplets, ×4 = 64ths. Shown as a cell split into that many parts.">RETRIG</button><button class="tog" data-k="pitch" data-tip="PITCH — rolls that ramp up in pitch, and half-time drags pitched down.">PITCH</button><button class="tog" data-k="rev" data-tip="REVERSE — the odd slice played backwards, usually just before a downbeat.">REVERSE</button><button class="tog" data-k="half" data-tip="HALF — half-speed drag: a segment of the break plays at half speed, so it lasts twice as long and drops an octave, like a slowing record. Lands at the end of a bar. With REVERSE also on, about 1 in 3 plays backwards: a rewind swell into the next downbeat.">HALF</button><button class="tog" data-k="gap" data-tip="GAPS — drops an occasional off-beat slice to silence.">GAPS</button>
-  </div></div></div>
-  <div class="mod"><span class="cap">START</span><div class="row">
-    <button class="tog" data-k="lock" data-tip="LOCK — every pattern opens with the first STEPS slices of the source, untouched.">LOCK</button>
-    <div class="knob" data-k="lockN" data-min="1" data-max="16" data-step="1" data-def="8" data-label="STEPS"></div>
-  </div></div>
-  <div class="mod"><span class="cap">EDIT</span><div class="row">
+<header class="generation-deck">
+  <div id="ideas"></div>
+  <div class="generation-controls">
+    <h1>BREAK FAST SCRAMBLE</h1>
+    <div class="generation-mod"><span class="cap">PATTERN</span><div class="row">
+      <div class="knob" data-k="chaos" data-min="0" data-max="1" data-step="0.01" data-def="0.35" data-label="CHAOS"></div>
+      <button id="gen" data-tip="REROLL — replace the current batch using the same settings. Pinned patterns and the playing pattern stay in place.">REROLL</button>
+    </div></div>
+    <div class="generation-mod"><span class="cap">SOURCE</span><div class="row">
+      <button class="tog" data-k="keepIntro" data-tip="KEEP INTRO — use the first STEPS slices from the source break at the start of each generated pattern. The remaining steps stay in place.">KEEP INTRO</button>
+      <div class="knob" data-k="lockN" data-min="1" data-max="16" data-step="1" data-def="8" data-label="STEPS"></div>
+    </div></div>
+    <div class="generation-mod"><span class="cap">ALLOW</span><div class="row"><div class="togs">
+      <button class="tog" data-k="retrig" data-tip="RETRIG — stutter rolls: a slice retriggered inside one 16th, usually a snare at a phrase end. ×2 = 32nds, ×3 = 16th triplets, ×4 = 64ths. Shown as a cell split into that many parts.">RETRIG</button><button class="tog" data-k="pitch" data-tip="PITCH — rolls that ramp up in pitch, and half-time drags pitched down.">PITCH</button><button class="tog" data-k="rev" data-tip="REVERSE — the odd slice played backwards, usually just before a downbeat.">REVERSE</button><button class="tog" data-k="half" data-tip="HALF — half-speed drag: a segment of the break plays at half speed, so it lasts twice as long and drops an octave, like a slowing record. Lands at the end of a bar. With REVERSE also on, about 1 in 3 plays backwards: a rewind swell into the next downbeat.">HALF</button><button class="tog" data-k="gap" data-tip="GAPS — drops an occasional off-beat slice to silence.">GAPS</button>
+    </div></div></div>
+  </div>
+</header>
+<div id="pattern-tools" role="group" aria-label="Pattern editing and view">
+  <div class="pattern-tool-group" role="group" aria-label="Edit"><span class="cap">EDIT</span>
     <button class="tog" data-k="live" data-tip="LIVE — while you drag a selection, the cards already show (and play) the swap or clone at the spot you're over. Move away and they go back; let go to keep it.">LIVE</button>
     <button class="tog" data-k="oneRow" data-tip="1 ROW — selections stay inside a single bar: a marquee only picks steps in the row it started on, and ⇧-click extends sideways only.">1 ROW</button>
-  </div></div>
-  <div class="mod"><span class="cap">VIEW</span><div class="row">
+  </div>
+  <div class="pattern-tool-group" role="group" aria-label="View"><span class="cap">VIEW</span>
     <div class="seg" data-k="colors"><button data-v="kit" data-tip="KIT — colour each step by drum: kick, snare, ghost, ride.">KIT</button><button data-v="pos" data-tip="POSITION — colour each step by where it sits in the source: dark blue at the start of the break through purple and orange to yellow at the end (readable with red-green colour blindness). Unbroken segments read as smooth gradients; jumps show as colour breaks you can trace back to the source map.">POSITION</button></div>
-    <button class="tog" data-k="keyShow" data-tip="KEY — the source slices (click one to hear it), what the colours and marks on the cells mean, and the editing keys.">KEY</button>
-  </div></div>
-</header>
-<div id="ideas"></div>
+    <button class="tog" data-k="keyShow" data-tip="KEY — see the full source pattern, play the original sample, and look up grid markings and editing shortcuts.">KEY</button>
+  </div>
+</div>
 <div id="srcmap"></div>
 <main id="cards"></main>
 <div id="newtile">
@@ -59,13 +62,53 @@
     <div class="knob" data-k="vol" data-min="0" data-max="1.2" data-step="0.01" data-def="0.85" data-label="VOL"></div>
   </div></div>
 </div>
-<div id="selbar"><button class="sb-vt" title="show / edit the slice values of the selection">VALUES ▸</button><input class="sb-in" spellcheck="false" autocomplete="off" title="slice numbers for the selected steps — type and press Enter. One number on several steps = a run from it (12 → 12 13 14…). Tokens work too: 12r reversed, 12x3 roll, 12+5 pitch, . rest. Esc cancels.">
-  <button data-op="regen" class="sb-ico" title="regenerate the selection: new steps from the generator that sit on the beat (kick on 1, snares on 2 and 4) and join the steps around it. Again for another take; ⌘Z undoes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
-  <button data-op="rev" title="reverse on/off">REV</button>
-  <span class="sb-grp"><button data-op="pdn" title="pitch down a semitone (⇧ = octave)">−</button><span class="sb-p">0</span><button data-op="pup" title="pitch up a semitone (⇧ = octave)">+</button></span>
-  <button data-op="half" title="half speed: play the selection's first half at 0.5× across it (again to undo)">HALF</button>
-  <span class="sb-grp"><button data-op="x1" title="no retrigger">×1</button><button data-op="x2" title="retrigger ×2 (32nds)">×2</button><button data-op="x3" title="retrigger ×3 (triplets)">×3</button><button data-op="x4" title="retrigger ×4 (64ths)">×4</button></span>
-  <button data-op="del" class="sb-ico" title="clear to rests (Delete)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="m12 9 6 6"/><path d="m18 9-6 6"/></svg></button>
+<div id="selbar" role="group" aria-label="Selected steps">
+  <div class="sb-section sb-slice" role="group" aria-labelledby="sb-slice-label">
+    <span id="sb-slice-label" class="sb-label">Slice</span>
+    <div class="sb-grp">
+      <button type="button" class="sb-vt" aria-expanded="false" aria-controls="sb-values" title="Show or edit the slice values of the selection">EDIT ▸</button>
+      <input id="sb-values" class="sb-in" aria-label="Slice numbers" spellcheck="false" autocomplete="off" title="Enter a slice number to start a run, or one number per selected step. Esc cancels.">
+    </div>
+  </div>
+  <div class="sb-section" role="group" aria-labelledby="sb-pitch-label">
+    <span id="sb-pitch-label" class="sb-label">Pitch</span>
+    <div class="sb-grp">
+      <button type="button" data-op="pdn" title="Pitch down a semitone (⇧ = octave)" aria-label="Lower pitch">−</button>
+      <span class="sb-p">0 st</span>
+      <button type="button" data-op="pup" title="Pitch up a semitone (⇧ = octave)" aria-label="Raise pitch">+</button>
+    </div>
+  </div>
+  <div class="sb-section" role="group" aria-labelledby="sb-gain-label">
+    <span id="sb-gain-label" class="sb-label">Gain</span>
+    <div class="sb-grp">
+      <button type="button" data-op="vdn" title="Lower gain by 1 dB (⇧ = 6 dB)" aria-label="Lower gain">−</button>
+      <button type="button" data-op="vreset" class="sb-db" title="Reset gain to 0 dB">0 dB</button>
+      <button type="button" data-op="vup" title="Raise gain by 1 dB (⇧ = 6 dB)" aria-label="Raise gain">+</button>
+    </div>
+  </div>
+  <div class="sb-section" role="group" aria-labelledby="sb-playback-label">
+    <span id="sb-playback-label" class="sb-label">Playback</span>
+    <div class="sb-grp">
+      <button type="button" data-op="rev" title="Reverse selected audio">REVERSE</button>
+      <button type="button" data-op="half" title="Play the selected span at half speed, or return its half-speed runs to normal speed" aria-label="Half speed">HALF</button>
+    </div>
+  </div>
+  <div class="sb-section" role="group" aria-labelledby="sb-retrigger-label">
+    <span id="sb-retrigger-label" class="sb-label">Retrigger</span>
+    <div class="sb-grp">
+      <button type="button" data-op="x1" title="No retrigger">×1</button>
+      <button type="button" data-op="x2" title="Retrigger ×2 (32nds)">×2</button>
+      <button type="button" data-op="x3" title="Retrigger ×3 (triplets)">×3</button>
+      <button type="button" data-op="x4" title="Retrigger ×4 (64ths)">×4</button>
+    </div>
+  </div>
+  <div class="sb-section" role="group" aria-labelledby="sb-actions-label">
+    <span id="sb-actions-label" class="sb-label">Selection</span>
+    <div class="sb-grp">
+      <button type="button" data-op="regen" title="Regenerate the selection and fit the steps around it (⌘Z undoes)">REROLL</button>
+      <button type="button" data-op="del" title="Clear to rests (Delete)">CLEAR</button>
+    </div>
+  </div>
 </div>
 <div id="tip"></div>
 <div id="drop">drop a 4-bar break (wav/aiff/mp3)</div>
