@@ -109,6 +109,7 @@ button.pri {
   width: 15px;
   height: 18px;
   border-radius: 2px;
+  background-color: var(--step-fill, transparent);
   font-size: 8px;
   display: flex;
   align-items: center;
@@ -126,19 +127,19 @@ button.pri {
   height: var(--ch, 18px);
 }
 .cell.K {
-  background-color: var(--K);
+  --step-fill: var(--K);
 }
 .cell.S {
-  background-color: var(--S);
+  --step-fill: var(--S);
 }
 .cell.g {
-  background-color: var(--g);
+  --step-fill: var(--g);
 }
 .cell.h {
-  background-color: var(--h);
+  --step-fill: var(--h);
 }
 .cell.rest {
-  background-color: #222;
+  --step-fill: #222;
   color: #555;
 }
 .cell.rev:not(.hs) {
@@ -165,11 +166,11 @@ button.pri {
   background-repeat: no-repeat;
 }
 .cell.nt {
-  background-color: #6c6c78;
+  --step-fill: #6c6c78;
   color: #fffc;
 }
 body.posmode .cell[style*='--pc'] {
-  background-color: var(--pc);
+  --step-fill: var(--pc);
   color: var(--pt, #000b);
 }
 body.posmode .kitonly,
@@ -283,6 +284,10 @@ main {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 7px 8px;
+}
+#cards > .card {
+  user-select: none;
+  -webkit-user-select: none;
 }
 .card.playing {
   border-color: var(--acc);
@@ -1331,7 +1336,7 @@ body.nokey #srcmap {
 body.marking .card:not(.marking) .grid .cell {
   opacity: 0.22;
 }
-/* a step's level: quieter steps read darker (brightness, so it doesn't fight the knob-hover dimming) */
+/* Apply gain to the fill so the selection outline and its gutter bridges stay bright. */
 .cell[style*='--lv'] {
-  filter: brightness(var(--lv));
+  background-color: rgb(from var(--step-fill) calc(r * var(--lv)) calc(g * var(--lv)) calc(b * var(--lv)));
 }

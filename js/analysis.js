@@ -184,7 +184,7 @@ function keyHTML() {
     grp(
       'EDIT',
       [
-        ['⌘-drag', 'select'],
+        ['drag on card / ⌘-drag', 'select'],
         ['⌘-click', 'select step'],
         ['⇧-click', 'extend'],
         ['drag', 'swap (any loop)'],
