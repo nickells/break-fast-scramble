@@ -18,13 +18,18 @@ function contig(a, b) {
     (a.p || 0) === (b.p || 0)
   );
 }
-function drawHalfLabel(cell, steps, i, included) {
+function halfLabelClass(steps, i, included) {
   const col = i % SPB, second = (i - voiceStart(steps, i)) % 2 === 1;
   if (second && col > 0 && (!included || included.has(i - 1))) return;
   const pair = !second && col + 1 < SPB && steps[i + 1]?.hc &&
     (!included || included.has(i + 1));
+  return pair ? 'hn pair' : 'hn';
+}
+function drawHalfLabel(cell, steps, i, included) {
+  const className = halfLabelClass(steps, i, included);
+  if (!className) return;
   const label = document.createElement('span');
-  label.className = pair ? 'hn pair' : 'hn';
+  label.className = className;
   label.textContent = steps[i].s;
   cell.appendChild(label);
 }
@@ -240,7 +245,6 @@ function drawLoop(card) {
   br.classList.toggle('full', full);
   rows.forEach((r, k) => r.classList.toggle('outloop', k < card.loop.a || k > card.loop.b));
 }
-/* cells fill the card: same card grid, bigger + more readable steps. 16 cells + 15 gutters across what's left beside the row ▶s and loop gutter */
 /* one naming engine for every card (namer.js); it avoids names other cards already use */
 function nameFor(card, steps) {
   const taken = new Set(cards.filter(o => o !== card && o.name).map(o => o.name));
@@ -252,24 +256,26 @@ function nameFor(card, steps) {
   return nm;
 }
 function sizeCells() {
-  const c = document.querySelector('#cards .card');
+  const c = document.querySelector('#cards .card:not(.ph)');
   if (!c) return;
   const g = c.querySelector('.grid'),
     gw = c.querySelector('.gwrap');
-  const side = g.getBoundingClientRect().left - c.getBoundingClientRect().left,
-    cs = getComputedStyle(c),
-    pad = parseFloat(cs.paddingRight) + parseFloat(cs.borderRightWidth);
-  const avail = c.clientWidth - side - pad - 4,
-    cw = Math.max(15, Math.min(30, Math.floor((avail - 15 * 3) / 16))),
+  const bounds = gw.getBoundingClientRect(),
+    side = g.getBoundingClientRect().left - bounds.left,
+    style = getComputedStyle(g),
+    padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+  // Fill the space beside the row controls, accounting for the fixed gaps between steps.
+  const avail = bounds.width - side - padding - (SPB - 1) * 3,
+    cw = Math.max(15, Math.min(30, Math.floor((avail / SPB) * 100) / 100)),
     r = document.documentElement.style;
   if (r.getPropertyValue('--cw') === cw + 'px') return;
   r.setProperty('--cw', cw + 'px');
-  r.setProperty('--ch', Math.round(cw * 1.08) + 'px');
+  r.setProperty('--ch', Math.round(cw * 1.15) + 'px');
   r.setProperty('--cf', Math.max(8, Math.min(12, Math.round(cw * 0.46))) + 'px');
   cards.forEach(k => k.loop && drawLoop(k));
 }
 addEventListener('resize', () => requestAnimationFrame(sizeCells));
-function renderCard(card) {
+function renderCard(card, { reuseCells = false } = {}) {
   const el = card.el,
     steps = annotateHalf(card.steps);
   card.str = toStr(steps);
@@ -298,53 +304,37 @@ function renderCard(card) {
     .filter(Boolean)
     .join(' · ');
   const grid = el.querySelector('.grid');
-  grid.innerHTML = '';
-  card.cells = [];
+  if (!reuseCells) {
+    grid.replaceChildren();
+    card.cells = [];
+    card.cellKeys = [];
+  }
   for (let b = 0; b < BARS; b++) {
-    const row = document.createElement('div');
-    row.className = 'row';
+    const row = reuseCells ? grid.children[b] : document.createElement('div');
+    if (!reuseCells) row.className = 'row';
     for (let k = 0; k < SPB; k++) {
       const i = b * SPB + k,
         e = steps[i],
-        start = voiceStart(steps, i),
-        voice = steps[start],
-        c = document.createElement('div');
-      if (e.s >= 0) {
-        c.style.setProperty('--pc', posColor(e.s));
-        c.style.setProperty('--pt', posText(e.s));
-      }
-      c.className =
+        voice = steps[voiceStart(steps, i)],
+        cont = i > 0 && contig(steps[i - 1], e),
+        joinLeft = k > 0 && cont,
+        joinRight = k + 1 < SPB && contig(e, steps[i + 1]),
+        label = e.h && halfLabelClass(steps, i);
+      const className =
         'cell ' +
-        (e.s < 0 ? 'rest' : slices[e.s % N].role) +
+        (e.s < 0 ? 'rest' : '') +
         (voice.r ? ' rev' : '') +
         (e.x > 1 ? ' x' + e.x : '') +
         (e.p > 0 ? ' pu' : e.p < 0 ? ' pd' : '') +
-        (e.h ? ' hs' : '');
-      c.textContent = e.s < 0 ? '·' : e.s;
-      if (e.h) {
-        c.textContent = '';
-        drawHalfLabel(c, steps, i);
-        if (voice.r) c.insertAdjacentHTML('beforeend', '<span class="reverse-run" aria-hidden="true"></span>');
-      }
-      const pr = i > 0 ? steps[i - 1] : null,
-        cont = pr && contig(pr, e);
-      if (cont && k > 0) {
-        c.classList.add('join');
-        card.cells[i - 1].classList.add('joinR');
-        if (e.hc && voice.r) {
-          c.classList.add('rev-join');
-          card.cells[i - 1].classList.add('rev-joinR');
-        }
-      }
-      if (!cont && k === 0 && i > 0) c.classList.add('cut');
-      if (voice.v) c.style.setProperty('--lv', Math.min(1.25, Math.max(0.4, 1 + voice.v / 24))); // quieter steps read darker
-      if (e.x > 1) {
-        c.classList.add('rt');
-        c.style.backgroundImage = rtBg(e.x);
-      }
-      c.dataset.i = i;
-      c.title =
-        (e.s < 0 ? 'rest' : `slice ${e.s}`) +
+        (e.h ? ' hs' : '') +
+        (joinLeft ? ' join' : '') +
+        (joinLeft && e.hc && voice.r ? ' rev-join' : '') +
+        (!cont && k === 0 && i > 0 ? ' cut' : '') +
+        (e.x > 1 ? ' rt' : '') +
+        (joinRight ? ' joinR' : '') +
+        (joinRight && steps[i + 1].hc && voice.r ? ' rev-joinR' : '');
+      const title =
+        (e.s < 0 ? 'rest' : `slice ${e.s} · ${hitsName(slices[e.s % N].hits)}`) +
         (e.x > 1
           ? ` · retrig ×${e.x} (${RT_NAME[e.x] || e.x + ' hits per 16th'}, ${Math.round(
               (60 / S.out / 4 / e.x) * 1000,
@@ -355,23 +345,44 @@ function renderCard(card) {
         (voice.v ? ` · ${voice.v > 0 ? '+' : ''}${voice.v} dB` : '') +
         ' · ' +
         (cont ? 'continues' : 'cut');
-      row.appendChild(c);
-      card.cells.push(c);
+      // Include the joins and half-speed label, which can change with neighboring steps.
+      const key = className + '|' + title + '|' + (label || '');
+      if (reuseCells && card.cellKeys[i] === key) continue;
+
+      const c = document.createElement('div');
+      c.className = className;
+      c.title = title;
+      c.dataset.i = i;
+      c.textContent = e.h ? '' : e.s < 0 ? '·' : e.s;
+      if (e.s >= 0) {
+        c.style.setProperty('--pc', posColor(e.s));
+        c.style.setProperty('--pt', posText(e.s));
+      }
+      if (e.h) {
+        drawHalfLabel(c, steps, i);
+        if (voice.r) c.insertAdjacentHTML('beforeend', '<span class="reverse-run" aria-hidden="true"></span>');
+      }
+      if (voice.v) c.style.setProperty('--lv', Math.min(1.25, Math.max(0.4, 1 + voice.v / 24))); // quieter steps read darker
+      if (e.x > 1) c.style.backgroundImage = rtBg(e.x);
+      if (reuseCells) card.cells[i].replaceWith(c);
+      else row.appendChild(c);
+      card.cells[i] = c;
+      card.cellKeys[i] = key;
     }
+    if (reuseCells) continue;
     grid.appendChild(row);
-  }
-  if (!card.preview) el.querySelectorAll('.grid .row').forEach((r, k) => {
-    r.onmouseenter = () => card.rbtn[k].classList.add('hot');
-    r.onmouseleave = () => card.rbtn[k].classList.remove('hot');
-    r.onclick = () => {
+    if (card.preview) continue;
+    row.onmouseenter = () => card.rbtn[b].classList.add('hot');
+    row.onmouseleave = () => card.rbtn[b].classList.remove('hot');
+    row.onclick = () => {
       if (ED.eatClick) {
         ED.eatClick = false;
         return;
       }
       if (ED.suppress || card.sel?.size) return;
-      launch(card, k);
+      launch(card, b);
     };
-  });
+  }
   (card.sel || new Set()).forEach(i => card.cells[i].classList.add('sel'));
   if (card.loop) requestAnimationFrame(() => drawLoop(card));
   if (P && (P.shownCard || P.card) === card && card.nowI != null)

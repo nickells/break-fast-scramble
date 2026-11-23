@@ -1,5 +1,33 @@
 'use strict';
 
+/* ---------- the break's notation ----------
+   The amen as it's notated, per bar, in 16ths: what is struck in each slice. A slice can hold more than one hit
+   (kick + ride on the 8ths, snare + ride on the backbeats); one with none is the ring of the hit before it.
+   Ride on every 8th except bar 4 step 10, a crash; kicks 0 2 10 11 (bar 3: 0 2 10; bar 4: 2 3 10); snares 4 and 12
+   (bars 3-4: 4 and 14, the 4th beat delayed); ghosts, the quiet snares, 7 9 (bars 1-2 also 15; bar 4 also 1).
+   Snares, ride and crash after Ethan Hein's step-by-step build of the break; kicks checked against the audio (the 16
+   slices with the most low end are these plus two kick tails, and nothing on the 8th offbeats of beats 2 and 4). */
+const AMEN_NOTES = {
+  kick: [[0, 2, 10, 11], [0, 2, 10, 11], [0, 2, 10], [2, 3, 10]],
+  snare: [[4, 12], [4, 12], [4, 14], [4, 14]],
+  ghost: [[7, 9, 15], [7, 9, 15], [7, 9], [1, 7, 9]],
+  crash: [[], [], [], [10]],
+};
+function amenHits(i) {
+  const b = Math.floor(i / SPB) % BARS,
+    st = i % SPB,
+    on = k => AMEN_NOTES[k][b].includes(st),
+    h = { kick: on('kick'), snare: on('snare'), ghost: on('ghost'), crash: on('crash') };
+  h.ride = st % 2 === 0 && !h.crash;
+  return h;
+}
+/* a slice's main voice, where one drum has to stand for it (the generator's choices, the card namer): the snare over
+   the ride it lands with, a kick over its ride; '.' for a slice with nothing struck, only the ring of the hit before */
+// what a slice holds, in words: "kick + ride", or the ring of the hit before
+const hitsName = h =>
+  ['kick', 'snare', 'ghost', 'ride', 'crash'].filter(k => h[k]).join(' + ') || 'ring of the hit before';
+const mainVoice = h => (h.snare ? 'S' : h.ghost ? 'g' : h.kick ? 'K' : h.ride || h.crash ? 'h' : '.');
+
 /* ---------- audio load + analysis ---------- */
 async function loadArrayBuffer(ab) {
   buf = await ctx.decodeAudioData(ab);
@@ -109,18 +137,14 @@ function analyze() {
       sd = Math.sqrt(v.reduce((a, b) => a + (b - mu) ** 2, 0) / v.length) || 1;
     slices.forEach(s => (s['z' + k] = (s[k] - mu) / sd));
   };
-  ['lo', 'mid', 'hi', 'rms'].forEach(z);
+  ['lo', 'mid', 'hi', 'rms'].forEach(z); // loudness and brightness, for ranking slices that play the same drums
+  // what each slice holds comes from the notation; kick and snare as scores on about the old ±1 scale the generator's
+  // weights were tuned to (a ghost is a quiet snare: in between)
   for (const s of slices) {
-    s.kick = s.zlo - 0.4 * s.zmid;
-    s.snare = s.zmid - 0.6 * s.zlo;
-    s.role =
-      s.zlo > 0.55 && s.kick > 0.2
-        ? 'K'
-        : s.zmid > 0.35 && s.snare > 0.1
-        ? 'S'
-        : s.zrms > -0.5
-        ? 'g'
-        : 'h';
+    s.hits = amenHits(s.i);
+    s.kick = s.hits.kick ? 1.2 : -0.8;
+    s.snare = s.hits.snare ? 1.2 : s.hits.ghost ? 0.2 : -0.8;
+    s.role = mainVoice(s.hits);
   }
   drawSrcMap();
 }
@@ -130,8 +154,8 @@ function rtBg(x) {
     const at = ((q * 100) / x).toFixed(2);
     st.push(
       `transparent calc(${at}% - 0.75px)`,
-      `#000c calc(${at}% - 0.75px)`,
-      `#000c calc(${at}% + 0.75px)`,
+      `var(--mark) calc(${at}% - 0.75px)`,
+      `var(--mark) calc(${at}% + 0.75px)`,
       `transparent calc(${at}% + 0.75px)`,
     );
   }
@@ -140,23 +164,23 @@ function rtBg(x) {
 /* The source preview and the pattern key. */
 function keyHTML() {
   const c = (cls, t, st = '') => `<div class="cell ${cls}" style="${st}">${t}</div>`;
-  const n = (cls, t, st = '') => c(cls.replace(/^\S+/, 'nt'), t, st); // colour-agnostic example: shape only, same in KIT and POSITION
-  const it = (ex, label) => `<div class="ki"><div class="kx">${ex}</div><span>${label}</span></div>`;
+  const n = (cls, t, st = '') => c(cls.replace(/^\S+/, 'nt'), t, st); // colour-agnostic example: shape only
+  // hit: what clicking the example plays (and shows the drummer playing): a drum role, or a rest (KEY_HIT, below)
+  const it = (ex, label, hit) =>
+    `<div class="ki${hit ? ' khit' : ''}"${hit ? ` data-hit='${JSON.stringify(hit)}' data-tip="click: play it"` : ''}><div class="kx">${ex}</div><span>${label}</span></div>`;
   const grp = (cap, items, cls = '') =>
     `<div class="kg ${cls}"><span class="cap">${cap}</span><div class="kr">${items.join('')}</div></div>`;
   return `<div class="key">${[
-    grp('DRUM', [it(c('K', 0), 'kick'), it(c('S', 4), 'snare'), it(c('g', 8), 'ghost'), it(c('h', 5), 'ride')], 'kitonly'),
     grp(
       'POSITION',
       [
         it(
           Array.from({ length: 8 }, (_, k) =>
-            c('h' + (k ? ' join' : '') + (k < 7 ? ' joinR' : ''), '', `--pc:${posColor(k * 8)}`),
+            c((k ? 'join' : '') + (k < 7 ? ' joinR' : ''), '', `--pc:${posColor(k * 8)}`),
           ).join(''),
           'bar 1 → 4',
         ),
       ],
-      'posonly',
     ),
     grp('FLOW', [
       it(n('S joinR', 4) + n('h join joinR', 5) + n('h join', 6), 'run'),
@@ -164,15 +188,15 @@ function keyHTML() {
       it(n('K', 32, 'box-shadow:-2px 0 0 0 var(--acc)'), 'cut at bar start'),
     ]),
     grp('RETRIG', [
-      it(n('S rt', 4, 'background-image:' + rtBg(2)), '×2 32nds'),
-      it(n('S rt', 4, 'background-image:' + rtBg(3)), '×3 triplets'),
-      it(n('S rt', 4, 'background-image:' + rtBg(4)), '×4 64ths'),
+      it(n('S rt', 4, 'background-image:' + rtBg(2)), '×2 32nds', { role: 'S', x: 2 }),
+      it(n('S rt', 4, 'background-image:' + rtBg(3)), '×3 triplets', { role: 'S', x: 3 }),
+      it(n('S rt', 4, 'background-image:' + rtBg(4)), '×4 64ths', { role: 'S', x: 4 }),
     ]),
     grp('FX', [
-      it(n('g rev', 7), 'reversed'),
-      it(n('S pu', 4), 'pitch up'),
-      it(n('h pd', 9), 'pitch down'),
-      it(c('rest', '·'), 'rest'),
+      it(n('g rev', 7), 'reversed', { role: 'g', r: true }),
+      it(n('S pu', 4), 'pitch up', { role: 'S', p: 5 }),
+      it(n('h pd', 9), 'pitch down', { role: 'h', p: -5 }),
+      it(c('rest', '·'), 'rest', { rest: true }),
       it(
         n('g hs joinR', '<span class="hn pair">40</span>') +
           n('g hs join joinR', '') +
@@ -184,11 +208,11 @@ function keyHTML() {
     grp(
       'EDIT',
       [
-        ['⌘-drag', 'select'],
-        ['⌘-click', 'select step'],
+        ['drag on card / ⌘-drag', 'select'],
+        ['click / ⌘-click', 'select step'],
         ['⇧-click', 'extend'],
         ['drag', 'swap (any loop)'],
-        ['⌥-drag', 'clone'],
+        ['⌥-drag', 'clone (any step)'],
         ['delete', 'clear'],
         ['⌘Z', 'undo'],
         ['esc', 'deselect'],
@@ -197,6 +221,33 @@ function keyHTML() {
     ),
   ].join('')}</div>`;
 }
+/* play one step on its own, and have the drummer play it too (for checking his drawings): clicks on the key's examples
+   and on the steps of the source shown in the key */
+function audition(e) {
+  if (!buf || !e) return;
+  ctx.resume();
+  if (e.s >= 0) schedStep(ctx, outG, e, ctx.currentTime + 0.01, step16(), false);
+  window.drummerPoke?.(e);
+}
+/* a slice that is that drum alone, by the notation (a ride's 8th, a kick with no ride, …) */
+function keySlice(role) {
+  return { K: 51, S: 4, g: 7, h: 6 }[role];
+}
+$('#srcmap').addEventListener('click', ev => {
+  // a step of the source shown in the key: that slice
+  const cell = ev.target.closest('.source-card .grid .cell');
+  if (cell) {
+    const i = [...cell.closest('.grid').querySelectorAll('.cell')].indexOf(cell);
+    if (i >= 0) audition({ s: i, x: 1 });
+    return;
+  }
+  // a key example: a slice that sounds as that drum, played as the example shows (retrig, reversed, pitched, a rest)
+  const el = ev.target.closest('.khit');
+  if (!el) return;
+  const hit = JSON.parse(el.dataset.hit),
+    s = hit.rest ? -1 : keySlice(hit.role);
+  if (s != null) audition({ s, x: hit.x || 1, r: !!hit.r, p: hit.p || 0 });
+});
 function drawSrcMap() {
   const el = $('#srcmap');
   el.innerHTML = keyHTML();

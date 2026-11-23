@@ -1,14 +1,17 @@
 :root {
-  --bg: #121214;
-  --panel: #1c1c20;
-  --line: #2c2c33;
-  --fg: #e6e6ea;
-  --dim: #8a8a96;
-  --K: #e5533d;
-  --S: #f2c14e;
-  --g: #8f7a3e;
-  --h: #4b6a8a;
-  --acc: #7be0c3;
+  /* technical light theme: paper, ink, one orange accent */
+  --bg: #f2f1ec;
+  --panel: #ffffff;
+  --paper: #f7f6f2;
+  --line: #d6d4cc;
+  --fg: #16161a;
+  --dim: #5c5c66;
+  --faint: #8a8a94;
+  --acc: #e8590c; /* playing, now, cut, loop region */
+  --on: #16161a; /* switched-on controls */
+  --on-fg: #ffffff;
+  --sel: #2f6feb; /* selection, drop targets */
+  --mark: #16161a; /* markers drawn on a cell (reverse, pitch, retrig splits); white on ink cells */
 }
 * {
   box-sizing: border-box;
@@ -18,7 +21,8 @@ body {
   background: var(--bg);
   color: var(--fg);
   font:
-    13px/1.4 ui-monospace,
+    13px/1.4 'IBM Plex Mono',
+    ui-monospace,
     SFMono-Regular,
     Menlo,
     monospace;
@@ -36,10 +40,10 @@ input,
 select,
 button,
 textarea {
-  background: #26262c;
+  background: var(--panel);
   color: var(--fg);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 3px;
   font: inherit;
   padding: 4px 7px;
 }
@@ -47,7 +51,7 @@ button {
   cursor: pointer;
 }
 button:hover {
-  border-color: var(--acc);
+  border-color: var(--fg);
 }
 button.pri {
   background: var(--acc);
@@ -109,11 +113,12 @@ button.pri {
   width: 15px;
   height: 18px;
   border-radius: 2px;
+  background-color: var(--step-fill, transparent);
   font-size: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #0009;
+  color: #16161ab3;
   position: relative;
   flex: none;
 }
@@ -125,29 +130,17 @@ button.pri {
 .card .rp {
   height: var(--ch, 18px);
 }
-.cell.K {
-  background-color: var(--K);
-}
-.cell.S {
-  background-color: var(--S);
-}
-.cell.g {
-  background-color: var(--g);
-}
-.cell.h {
-  background-color: var(--h);
-}
 .cell.rest {
-  background-color: #222;
-  color: #555;
+  --step-fill: var(--paper);
+  color: var(--faint);
 }
 .cell.rev:not(.hs) {
-  box-shadow: inset 0 0 0 2px #fff;
+  box-shadow: inset 0 0 0 2px var(--mark);
 }
 .reverse-run {
   position: absolute;
   inset: 0;
-  border: 2px solid #fff;
+  border: 2px solid var(--mark);
   border-radius: inherit;
   pointer-events: none;
 }
@@ -165,16 +158,16 @@ button.pri {
   background-repeat: no-repeat;
 }
 .cell.nt {
-  background-color: #6c6c78;
-  color: #fffc;
+  --step-fill: #9a978d;
+  --mark: #fff;
+  color: #fff;
 }
-body.posmode .cell[style*='--pc'] {
-  background-color: var(--pc);
+/* every step is coloured by where it sits in the source (dark blue at the start of the break to yellow at the end);
+   its text and markings take the contrasting ink */
+.cell[style*='--pc'] {
+  --step-fill: var(--pc);
+  --mark: var(--pt, #16161a);
   color: var(--pt, #000b);
-}
-body.posmode .kitonly,
-body:not(.posmode) .posonly {
-  display: none;
 }
 /* half speed: each source slice spans two steps, so its number is centred across the pair */
 .cell .hn {
@@ -193,14 +186,15 @@ body:not(.posmode) .posonly {
   width: calc(200% + 3px);
 }
 .cell.pu {
-  border-top: 3px solid #fff;
+  border-top: 3px solid var(--mark);
 }
 .cell.pd {
-  border-bottom: 3px solid #000;
+  border-bottom: 3px solid var(--mark);
 }
+/* the playhead: an orange ring with a 1px gap, so it reads on every fill, orange snares included */
 .cell.now {
-  outline: 2px solid #fff;
-  outline-offset: 0;
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
 }
 @keyframes beatPulse {
   0% {
@@ -272,6 +266,14 @@ body:not(.posmode) .posonly {
 .kx .cell {
   cursor: default;
 }
+.ki.khit,
+.ki.khit .cell,
+#srcmap .source-card .grid .cell {
+  cursor: pointer;
+}
+.ki.khit:hover span {
+  color: var(--fg);
+}
 main {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
@@ -281,8 +283,12 @@ main {
 .card {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 10px;
+  border-radius: 3px;
+  padding: 7px 8px;
+}
+#cards > .card {
+  user-select: none;
+  -webkit-user-select: none;
 }
 .card.playing {
   border-color: var(--acc);
@@ -301,7 +307,7 @@ main {
   z-index: 50;
   pointer-events: none;
   will-change: transform;
-  filter: drop-shadow(0 8px 14px #000c) drop-shadow(0 2px 3px #0008);
+  filter: drop-shadow(0 8px 14px #16161a40) drop-shadow(0 2px 3px #16161a33);
 }
 /* Overlap both edges of the gutter so fractional drag transforms can't expose a seam. */
 .ghost .cell.join::before {
@@ -316,8 +322,8 @@ main {
   width: 14px;
   height: 14px;
   border-radius: 7px;
-  background: var(--acc);
-  color: #111;
+  background: var(--sel);
+  color: #fff;
   font:
     700 11px/14px ui-monospace,
     monospace;
@@ -325,13 +331,13 @@ main {
 }
 .ghost.flying {
   z-index: 49;
-  filter: drop-shadow(0 4px 8px #000a);
+  filter: drop-shadow(0 4px 8px #16161a33);
 }
 .cell.lifted {
-  background-color: #1b1b20 !important;
+  background-color: var(--paper) !important;
   background-image: none !important;
   color: transparent !important;
-  box-shadow: inset 0 0 0 1px #34343c !important;
+  box-shadow: inset 0 0 0 1px var(--line) !important;
 }
 .cell.lifted::before {
   display: none;
@@ -349,75 +355,71 @@ main {
 .cell.landed {
   animation: landed 0.22s ease-out;
 }
-#selbar {
+/* bottom dock: the selection strip (only while steps are selected) sits on top of the playback row */
+#dock {
   position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 40;
+}
+#selbar {
   display: none;
   align-items: center;
   flex-wrap: wrap;
-  max-width: calc(100vw - 16px);
   gap: 6px 0;
-  padding: 4px 2px;
-  background: #26262c;
-  border: 1px solid #3a3a44;
-  border-radius: 7px;
-  box-shadow: 0 8px 24px #000b;
-}
-/* appears by rising out of the selected cells (no sliding from wherever it was last) */
-@keyframes sbRise {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.94);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes sbDrop {
-  from {
-    opacity: 0;
-    transform: translateY(-10px) scale(0.94);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+  padding: 7px 12px 7px 0;
+  background: var(--paper);
+  border-top: 1px solid var(--fg);
 }
 #selbar.show {
   display: flex;
-  animation: sbRise 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-#selbar.show.below {
-  animation-name: sbDrop;
 }
 #selbar button {
-  min-width: 21px;
-  height: 23px;
-  padding: 0 5px;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  border-radius: 4px;
-  background: #1f1f24;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  border-radius: 3px;
+  background: var(--panel);
 }
 #selbar button.on {
-  background: var(--acc);
-  color: #111;
-  border-color: var(--acc);
+  background: var(--on);
+  color: var(--on-fg);
+  border-color: var(--on);
 }
 #selbar .sb-section {
-  display: grid;
+  display: flex;
+  align-items: center;
   min-width: 0;
-  gap: 3px;
-  padding: 0 5px;
-  border-inline-end: 1px solid #3a3a44;
+  gap: 6px;
+  padding: 0 7px;
+  border-inline-end: 1px solid var(--line);
+}
+#selbar .sb-what {
+  align-self: stretch;
+  margin: -7px 0;
+  padding: 0 12px 0 18px;
+  box-shadow: inset 3px 0 0 var(--acc);
+}
+#selbar .sb-where {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+#selbar .sb-drag {
+  margin-left: auto;
+  border-inline-end: 0;
 }
 #selbar .sb-section:last-child {
   border-inline-end: 0;
 }
 #selbar .sb-label {
-  color: #b5b5c1;
-  font-size: 10px;
+  color: var(--dim);
+  font-weight: 600;
+  font-size: 9.5px;
   letter-spacing: 0.1em;
   line-height: 1;
   text-transform: uppercase;
@@ -447,10 +449,10 @@ main {
   padding: 0 6px;
   font-size: 11px;
   font-family: inherit;
-  background: #141418;
-  color: #fff;
-  border: 1px solid #3a3a44;
-  border-radius: 4px;
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
   outline: 0;
   text-align: center;
 }
@@ -470,7 +472,7 @@ main {
   display: none;
 }
 #selbar .sb-in:focus {
-  border-color: var(--acc);
+  border-color: var(--sel);
 }
 #selbar .sb-in.bad {
   border-color: #e5484d;
@@ -484,28 +486,10 @@ main {
     transform: translateX(3px);
   }
 }
-#selbar::after {
-  content: '';
-  position: absolute;
-  left: var(--ax, 50%);
-  bottom: -5px;
-  width: 8px;
-  height: 8px;
-  margin-left: -4px;
-  background: #26262c;
-  border-right: 1px solid #3a3a44;
-  border-bottom: 1px solid #3a3a44;
-  transform: rotate(45deg);
-}
-#selbar.below::after {
-  bottom: auto;
-  top: -5px;
-  transform: rotate(225deg);
-}
 .marq {
   position: fixed;
-  border: 1px dashed var(--acc);
-  background: rgba(123, 224, 195, 0.12);
+  border: 1px dashed var(--sel);
+  background: rgba(47, 111, 235, 0.08);
   pointer-events: none;
   z-index: 5;
 }
@@ -517,7 +501,7 @@ main {
   content: '';
   position: absolute;
   inset: -1px;
-  border: 2px solid var(--acc);
+  border: 2px solid var(--sel);
   border-radius: inherit;
   pointer-events: none;
 }
@@ -536,14 +520,14 @@ main {
   top: -1px;
   bottom: -1px;
   box-sizing: border-box;
-  border-top: 2px solid var(--acc);
-  border-bottom: 2px solid var(--acc);
+  border-top: 2px solid var(--sel);
+  border-bottom: 2px solid var(--sel);
 }
 .cell.pd.sel + .cell.pd.sel.join::before {
   bottom: -4px;
 }
 .cell.drop {
-  outline: 2px dashed #fff;
+  outline: 2px dashed var(--sel);
   outline-offset: -1px;
   z-index: 3;
 }
@@ -557,9 +541,6 @@ main {
 .card.editing .cell.sel {
   cursor: grab;
 }
-.rps {
-  padding-right: 2px;
-}
 .card .grid,
 .card .grid .row {
   cursor: pointer;
@@ -569,9 +550,10 @@ main {
   flex-direction: column;
   gap: 3px;
   padding-top: 5px;
+  padding-right: 1px;
 }
 .rp {
-  width: 16px;
+  width: 14px;
   height: 18px;
   padding: 0;
   font-size: 8px;
@@ -606,21 +588,21 @@ body.dragging .rp:not(.q) {
   pointer-events: none;
 }
 .rp.on {
-  color: #111;
+  color: var(--fg);
   background: var(--acc);
   border-color: var(--acc);
 }
 .lgut {
   position: relative;
-  width: 12px;
+  width: 10px;
   flex: none;
   cursor: ns-resize;
-  margin-right: 2px;
+  margin-right: 1px;
 }
 .lbr {
   position: absolute;
-  left: 4px;
-  width: 4px;
+  left: 2px;
+  width: 3px;
   border-radius: 2px;
   background: var(--acc);
   transition:
@@ -633,7 +615,7 @@ body.dragging .rp:not(.q) {
   content: '';
   position: absolute;
   left: 0;
-  width: 8px;
+  width: 7px;
   height: 2px;
   background: var(--acc);
   border-radius: 1px;
@@ -654,9 +636,9 @@ body.dragging .rp:not(.q) {
   opacity: 0.45;
 }
 .card .btns button.dc {
-  background: var(--acc);
-  color: #111;
-  border-color: var(--acc);
+  background: var(--on);
+  color: var(--on-fg);
+  border-color: var(--on);
 }
 .rp.q {
   color: var(--acc);
@@ -677,8 +659,8 @@ body.dragging .rp:not(.q) {
 .card .top {
   display: flex;
   align-items: center;
-  margin-bottom: 8px;
-  gap: 8px;
+  margin-bottom: 5px;
+  gap: 6px;
 }
 .card .top .nm {
   flex: 1;
@@ -690,31 +672,28 @@ body.dragging .rp:not(.q) {
 .card .top {
   cursor: grab;
 }
-.card.ro .top {
-  cursor: default;
-}
 .card.ph {
   background: transparent;
-  border: 1px dashed #3a3a44;
+  border: 1px dashed var(--line);
 }
 .card.lifting {
-  box-shadow: 0 14px 34px #000c;
-  border-color: #3a3a44;
+  box-shadow: 0 14px 34px #16161a33;
+  border-color: var(--fg);
 }
 .card.swaptg {
   outline: 2px dashed var(--acc);
   outline-offset: -2px;
 }
 .card .pl {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  border-radius: 50%;
+  border-radius: 3px;
   display: grid;
   place-items: center;
   flex: none;
-  background: #2a2a31;
-  border: 1px solid #3a3a44;
+  background: var(--panel);
+  border: 1px solid var(--fg);
   color: var(--fg);
 }
 .card .pl svg {
@@ -732,9 +711,9 @@ body.dragging .rp:not(.q) {
   color: var(--acc);
 }
 .card .pl.on {
-  background: var(--acc);
-  border-color: var(--acc);
-  color: #111;
+  background: var(--on);
+  border-color: var(--on);
+  color: var(--on-fg);
 }
 .card .pl.on .i-play {
   display: none;
@@ -753,7 +732,7 @@ body.dragging .rp:not(.q) {
 }
 .card .ico {
   display: flex;
-  gap: 2px;
+  gap: 1px;
 }
 .card .ico button {
   width: 24px;
@@ -768,15 +747,15 @@ body.dragging .rp:not(.q) {
   cursor: pointer;
 }
 .card .ico button:hover {
-  color: #fff;
-  background: #ffffff14;
+  color: var(--fg);
+  background: #16161a0f;
 }
 .card .ico svg {
   width: 14px;
   height: 14px;
 }
 .card .ico .dl:hover {
-  color: #ff6b6b;
+  color: #c62f22;
 }
 .card .ico .pn.on {
   color: var(--acc);
@@ -793,7 +772,7 @@ body.dragging .rp:not(.q) {
 .tags span {
   font-size: 10px;
   color: var(--dim);
-  background: #24242a;
+  background: var(--bg);
   border-radius: 3px;
   padding: 1px 6px;
 }
@@ -814,7 +793,7 @@ body.dragging .rp:not(.q) {
 .card .grid {
   width: fit-content;
   padding: 5px 0 2px 3px;
-  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.32) 0 2px, transparent 2px);
+  background-image: linear-gradient(90deg, rgba(22, 22, 26, 0.22) 0 2px, transparent 2px);
   background-size: calc((var(--cw, 15px) + 3px) * 4) 100%;
   background-position: 1px 0;
   background-repeat: repeat-x;
@@ -824,17 +803,18 @@ body.dragging .rp:not(.q) {
 }
 .card .grid .cell.rev.cut:not(.hs) {
   box-shadow:
-    inset 0 0 0 2px #fff,
+    inset 0 0 0 2px var(--mark),
     -2px 0 0 0 var(--acc);
 }
 .card .btns {
   display: flex;
-  gap: 5px;
-  margin-top: 8px;
+  gap: 4px;
+  margin-top: 4px;
   flex-wrap: wrap;
 }
 .card .btns button {
-  padding: 3px 8px;
+  padding: 2px 7px;
+  font-size: 12px;
 }
 .card.pinned {
   box-shadow: inset 0 2px 0 var(--acc);
@@ -847,7 +827,7 @@ body.dragging .rp:not(.q) {
 #newtile {
   position: relative;
   border: 1px dashed var(--line);
-  border-radius: 6px;
+  border-radius: 3px;
   min-height: 150px;
   display: flex;
 }
@@ -877,8 +857,8 @@ body.dragging .rp:not(.q) {
   letter-spacing: 0.12em;
 }
 #newtile .nt-go:hover {
-  color: var(--acc);
-  background: #ffffff06;
+  color: var(--fg);
+  background: #16161a08;
 }
 #newtile .nt-form {
   display: none;
@@ -889,7 +869,7 @@ body.dragging .rp:not(.q) {
   padding: 12px;
 }
 #newtile.open {
-  border-color: var(--acc);
+  border-color: var(--fg);
   border-style: solid;
 }
 #newtile.open .nt-go {
@@ -915,35 +895,58 @@ textarea {
   width: 100%;
   height: 110px;
 }
-#drop {
-  position: fixed;
-  inset: 0;
-  background: #000c;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  z-index: 9;
-}
 /* Style pad and pattern generation share a deck above the edit tools. */
 .generation-deck {
   display: grid;
   grid-template-columns: minmax(286px, 360px) minmax(0, 1fr);
   border-bottom: 1px solid var(--line);
   padding: 12px 18px;
+  background: var(--panel);
 }
 .generation-controls {
   align-content: center;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 14px 28px;
-  padding: 12px 26px;
+  gap: 10px 22px;
+  padding: 0 0 0 26px;
   border-left: 1px solid var(--line);
 }
 .generation-controls h1 {
   flex-basis: 100%;
   font-size: 17px;
+  font-weight: 600;
+}
+.h1-cur {
+  color: var(--acc);
+}
+.generation-mod.view-mod {
+  margin-left: auto;
+}
+/* source waveform: every slice of the break; the playing pattern's slices in ink, the rest grey, the sounding one orange */
+/* the drummer plays along, in a box to the left of the waveform; without the sprite the waveform takes the row */
+#drummer {
+  flex: none;
+  width: 118px;
+  height: 92px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+#wave {
+  flex-basis: calc(100% - 118px - 22px);
+  height: 92px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+#drummer[hidden] + #wave {
+  flex-basis: 100%;
+}
+#wave canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 .generation-mod {
   display: grid;
@@ -957,21 +960,6 @@ textarea {
 }
 .generation-mod .togs {
   flex-wrap: wrap;
-}
-#pattern-tools,
-.pattern-tool-group {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-#pattern-tools {
-  justify-content: space-between;
-  padding: 8px 18px;
-  border-bottom: 1px solid var(--line);
-}
-.pattern-tool-group .cap {
-  margin-right: 3px;
 }
 @media (max-width: 700px) {
   .generation-deck {
@@ -1039,21 +1027,20 @@ h1 {
   letter-spacing: 0.14em;
 }
 .knob.hero .v {
-  color: var(--acc);
   font-weight: 700;
 }
 #tip {
   position: fixed;
   z-index: 20;
   max-width: 270px;
-  background: #26262c;
-  border: 1px solid #3a3a44;
-  border-radius: 6px;
+  background: var(--panel);
+  border: 1px solid var(--fg);
+  border-radius: 3px;
   padding: 8px 10px;
   font-size: 11px;
   line-height: 1.45;
   color: var(--fg);
-  box-shadow: 0 6px 20px #000a;
+  box-shadow: 0 6px 20px #16161a26;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.12s;
@@ -1077,10 +1064,6 @@ body.dragging * {
   border-radius: 2px;
   border-color: var(--acc);
 }
-.knob.off {
-  opacity: 0.35;
-  pointer-events: none;
-}
 .seg,
 .togs {
   display: flex;
@@ -1092,8 +1075,8 @@ body.dragging * {
   padding: 0 10px;
   font-size: 10.5px;
   letter-spacing: 0.08em;
-  border-radius: 4px;
-  background: #222228;
+  border-radius: 3px;
+  background: var(--panel);
 }
 .seg {
   gap: 0;
@@ -1103,23 +1086,30 @@ body.dragging * {
   margin-left: -1px;
 }
 .seg button:first-child {
-  border-radius: 4px 0 0 4px;
+  border-radius: 3px 0 0 3px;
   margin-left: 0;
 }
 .seg button:last-child {
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 3px 3px 0;
 }
 .seg button.on,
 .tog.on {
-  background: var(--acc);
-  color: #111;
-  border-color: var(--acc);
+  background: var(--on);
+  color: var(--on-fg);
+  border-color: var(--on);
 }
 #gen {
   height: 30px;
-  padding: 0 12px;
+  padding: 0 14px;
   font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.1em;
+  background: var(--on);
+  color: var(--on-fg);
+  border-color: var(--on);
+}
+#gen:hover {
+  background: #33333b;
 }
 .kedit .kr {
   column-gap: 16px;
@@ -1132,18 +1122,16 @@ body.dragging * {
   letter-spacing: 0.04em;
 }
 #dj {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: #18181c;
-  border-top: 1px solid var(--line);
+  background: var(--panel);
+  border-top: 1px solid var(--fg);
   display: flex;
+  flex-wrap: wrap; /* narrow windows: modules drop to a second row instead of clipping */
+  row-gap: 10px;
   padding: 10px 6px;
-  z-index: 5;
 }
 #dj .mod.fmod {
   flex: 1;
+  min-width: 260px;
   max-width: 620px;
 }
 #fader {
@@ -1153,13 +1141,23 @@ body.dragging * {
   align-items: center;
   cursor: ew-resize;
   touch-action: none;
+  /* tick scale behind the track: a mark every 5%, a longer one every 25% */
+  background-image:
+    repeating-linear-gradient(90deg, #a9a69c 0 1px, transparent 1px 25%),
+    repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 5%);
+  background-size:
+    calc(100% + 1px) 22px,
+    calc(100% + 1px) 12px;
+  background-position:
+    0 50%,
+    0 50%;
+  background-repeat: no-repeat;
 }
 #ftrack {
   position: relative;
   width: 100%;
-  height: 6px;
-  background: #2a2a31;
-  border-radius: 3px;
+  height: 2px;
+  background: var(--line);
 }
 #ftrack::before {
   content: '';
@@ -1168,25 +1166,22 @@ body.dragging * {
   top: -8px;
   bottom: -8px;
   width: 1px;
-  background: #555;
+  background: var(--faint);
 }
 #ffill {
   position: absolute;
   top: 0;
   bottom: 0;
   background: var(--acc);
-  border-radius: 3px;
 }
 #fcap {
   position: absolute;
   top: 50%;
-  width: 18px;
-  height: 34px;
-  margin: -17px 0 0 -9px;
-  background: #ddd;
-  border-radius: 3px;
-  box-shadow: 0 2px 6px #0008;
-  background-image: linear-gradient(#ddd 45%, #222 45%, #222 55%, #ddd 55%);
+  width: 10px;
+  height: 26px;
+  margin: -13px 0 0 -5px;
+  background: var(--fg);
+  border-radius: 2px;
 }
 body {
   padding-bottom: 110px;
@@ -1242,12 +1237,12 @@ body {
   clip-path: polygon(50% 0%, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%);
 }
 .style-hex {
-  background: var(--dim);
+  background: var(--fg);
 }
 .style-hex::before {
   content: '';
   inset: 1px;
-  background: var(--panel);
+  background: var(--paper);
 }
 .style-hex > span {
   position: absolute;
@@ -1262,10 +1257,10 @@ body {
 .style-puck {
   width: 13px;
   height: 13px;
-  border: 2px solid var(--bg);
+  border: 2px solid var(--panel);
   border-radius: 50%;
   background: var(--acc);
-  box-shadow: 0 0 0 1px var(--acc);
+  box-shadow: 0 0 0 1px var(--fg);
   pointer-events: none;
 }
 .style-tip,
@@ -1281,7 +1276,7 @@ body {
 .style-tip {
   min-width: 73px;
   padding: 2px 5px;
-  color: #b4b4bd;
+  color: var(--dim);
   background: transparent;
   border-color: transparent;
   font-size: 10px;
@@ -1294,7 +1289,7 @@ body {
   z-index: 1;
   cursor: grabbing;
   background: var(--panel);
-  box-shadow: 0 3px 10px #0008;
+  box-shadow: 0 3px 10px #16161a33;
 }
 .style-tip.style-tip-target {
   outline: 1px dashed var(--acc);
@@ -1315,7 +1310,8 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .style-tip.mixed .style-share {
-  color: var(--acc);
+  color: var(--fg);
+  font-weight: 600;
 }
 body.nokey #srcmap {
   display: none;
@@ -1325,14 +1321,15 @@ body.nokey #srcmap {
   padding: 0 10px;
   font-size: 10.5px;
   letter-spacing: 0.08em;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 /* Hovering a mixed style highlights the steps it changes. */
 .card.marking .grid .cell:not(.mk),
 body.marking .card:not(.marking) .grid .cell {
   opacity: 0.22;
 }
-/* a step's level: quieter steps read darker (brightness, so it doesn't fight the knob-hover dimming) */
+/* Gain: quieter steps fade toward the card colour (on paper, darker would read as louder); boosts keep the full fill.
+   Applied to the fill only, so the selection outline and its gutter bridges stay crisp. */
 .cell[style*='--lv'] {
-  filter: brightness(var(--lv));
+  background-color: color-mix(in srgb, var(--step-fill) calc(min(var(--lv), 1) * 100%), var(--panel));
 }

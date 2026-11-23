@@ -4,10 +4,13 @@
 $('#gen').onclick = regenerate;
 /* NEW: a tile in the next grid slot. Click it for a generated pattern; its PASTE button opens a field to load one instead. */
 (() => {
+  let pasteRevision = 0;
   const tile = $('#newtile'),
     main = $('#cards'),
     inp = tile.querySelector('.nt-in'),
+    patternText = text => text.trim().replace(/^#\S+\s+/, '').replace(/^"[^"]*"\s+/, ''),
     open = on => {
+      pasteRevision++;
       tile.classList.toggle('open', on);
       if (on) inp.focus();
       else inp.value = '';
@@ -24,18 +27,32 @@ $('#gen').onclick = regenerate;
     if (main.lastElementChild !== tile) main.appendChild(tile);
   }).observe(main, { childList: true });
   tile.querySelector('.nt-go').onclick = () => add(generate((Math.random() * 2 ** 32) >>> 0), 'n');
-  tile.querySelector('.nt-paste').onclick = () => open(true);
+  tile.querySelector('.nt-paste').onclick = async () => {
+    open(true);
+    const revision = pasteRevision;
+    if (inp.value || !navigator.clipboard?.readText) return;
+    try {
+      const text = patternText(await navigator.clipboard.readText());
+      if (revision !== pasteRevision || inp.value || !text) return;
+      const steps = parse(text);
+      if (steps.length > 1 && steps.every(step => step.s < N)) {
+        inp.value = text.replace(/\s+/g, ' ');
+      }
+    } catch {
+      // Clipboard access may be unavailable, and unrelated text can fail to parse.
+    }
+  };
   tile.querySelector('.nt-orig').onclick = showOrig;
   tile.querySelector('.nt-x').onclick = () => open(false);
+  inp.oninput = () => {
+    pasteRevision++;
+  };
   inp.onkeydown = e => {
     if (e.key === 'Escape') open(false);
   };
   tile.querySelector('.nt-form').onsubmit = e => {
     e.preventDefault();
-    const t = inp.value
-      .trim()
-      .replace(/^#\S+\s+/, '')
-      .replace(/^"[^"]*"\s+/, '');
+    const t = patternText(inp.value);
     if (!t) return open(false);
     let p;
     try {
@@ -60,31 +77,12 @@ document.addEventListener('keydown', e => {
   if (card) launch(card);
   else stop();
 });
-addEventListener('dragover', e => {
-  e.preventDefault();
-  $('#drop').style.display = 'flex';
-});
-addEventListener('dragleave', e => {
-  if (!e.relatedTarget) $('#drop').style.display = 'none';
-});
-addEventListener('drop', async e => {
-  e.preventDefault();
-  $('#drop').style.display = 'none';
-  const f = e.dataTransfer.files[0];
-  if (!f) return;
-  stop();
-  const ab = await f.arrayBuffer(),
-    probe = await ctx.decodeAudioData(ab.slice(0));
-  UI.srcBpm = Math.round(((BARS * 4 * 60) / probe.duration) * 10) / 10; // treat a dropped break as 4 bars
-  await loadArrayBuffer(ab);
-  newBatch(false);
-});
 (async () => {
   const bin = atob(window.AMEN_WAV_B64),
     u = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-  delete UI.srcBpm;
-  await loadArrayBuffer(u.buffer); // built-in amen: 140 bpm
+  delete UI.srcBpm; // left in saves from when other breaks could be dropped in
+  await loadArrayBuffer(u.buffer); // the amen, 140 bpm
   if (!restoreCards()) newBatch(false);
   else if (styleMixMoved || legacyIntroLock) refreshGeneratedCards();
   sizeCells(); // size the cells to the cards right away (otherwise they sit at the fallback size until the first change)

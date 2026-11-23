@@ -25,11 +25,23 @@ function schedStep(c, dest, e, t, dur, raw, i) {
   } else if (half) dur *= e.hlen;
   const x = half ? 1 : e.x || 1,
     sub = dur / x,
-    sl = slices[e.s % N];
+    slice = e.s % N,
+    start = slices[slice].start;
+  // CHOP and swung REPITCH can leave space between hits. Keep that space clear of source bleed.
+  const swung = i != null && UI.swing > 50;
+  const end = !raw && (S.mode === 'chop' || swung)
+    ? (slices[slice + (half ? Math.ceil(n / 2) : 1)]?.start ?? buf.duration)
+    : Infinity;
   const rate =
     Math.pow(2, (e.p || 0) / 12) *
     (!raw && S.mode === 'repitch' ? S.out / S.src : 1) *
     (half ? 0.5 : 1);
+  const need = Math.min((sub + 0.004) * rate, end - start),
+    playable = need / rate;
+  if (playable <= 0) return;
+  const off = e.r ? Math.max(0, buf.duration - (start + need)) : start,
+    attack = Math.min(0.0015, playable / 2),
+    release = Math.max(attack, playable - 0.0045);
   for (let k = 0; k < x; k++) {
     const tt = t + k * sub,
       src = c.createBufferSource(),
@@ -38,8 +50,6 @@ function schedStep(c, dest, e, t, dur, raw, i) {
     src.playbackRate.value = rate;
     src.connect(g);
     g.connect(dest);
-    const need = (sub + 0.004) * rate;
-    const off = e.r ? Math.max(0, buf.duration - (sl.start + need)) : sl.start;
     // level: the step's own dB, and rolls rise into what follows (deeper start the longer the roll, up to −9 dB)
     let db = e.v || 0;
     if (x > 1) {
@@ -49,10 +59,10 @@ function schedStep(c, dest, e, t, dur, raw, i) {
     }
     const v = Math.pow(10, db / 20);
     g.gain.setValueAtTime(0, tt);
-    g.gain.linearRampToValueAtTime(v, tt + 0.0015);
-    g.gain.setValueAtTime(v, tt + sub - 0.0005);
-    g.gain.linearRampToValueAtTime(0, tt + sub + 0.004);
-    src.start(tt, off, need + 0.002);
+    g.gain.linearRampToValueAtTime(v, tt + attack);
+    g.gain.setValueAtTime(v, tt + release);
+    g.gain.linearRampToValueAtTime(0, tt + playable);
+    src.start(tt, off, need);
   }
 }
 let P = null;

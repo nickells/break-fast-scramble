@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Drummer frames</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #f2f1ec; --panel: #fff; --line: #d6d4cc; --fg: #16161a; --dim: #5c5c66; --acc: #e8590c; --sel: #2f6feb; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 28px 60px; background: var(--bg); color: var(--fg); font: 12px/1.45 'IBM Plex Mono', ui-monospace, monospace; }
+  h1 { font-size: 20px; letter-spacing: .12em; margin: 0 0 4px; }
+  .sub { color: var(--dim); margin: 0 0 20px; max-width: 900px; }
+  h2 { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; margin: 28px 0 10px; display: flex; gap: 10px; align-items: baseline; }
+  h2 small { font-weight: 400; color: var(--dim); text-transform: none; letter-spacing: 0; }
+  table { border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); }
+  th, td { text-align: left; padding: 6px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--dim); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+  tr.sound { cursor: pointer; }
+  tr.sound:hover td { background: #faf9f5; }
+  tr.sound.on td { background: #fff3ec; }
+  .k { display: inline-block; min-width: 18px; padding: 0 4px; border: 1px solid var(--fg); text-align: center; font-weight: 600; }
+  .grid { display: flex; flex-wrap: wrap; gap: 10px; }
+  .cell { width: 190px; background: var(--panel); border: 1px solid var(--line); padding: 8px; transition: opacity .15s; }
+  .cell.dim { opacity: .18; }
+  .cell.hit { outline: 2px solid var(--acc); outline-offset: -1px; }
+  .img { width: 174px; height: 135px; background-repeat: no-repeat; background-color: #fff; border: 1px solid var(--line); }
+  .id { display: flex; justify-content: space-between; align-items: baseline; margin-top: 6px; }
+  .id { gap: 8px; }
+  .id b { font-size: 15px; }
+  .id span { font-size: 11px; color: var(--dim); text-align: right; }
+  .tags { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .tag { border: 1px solid var(--line); padding: 0 5px; color: var(--dim); white-space: nowrap; }
+  .tag.play { border-color: var(--fg); color: var(--fg); }
+  .tag.alt { border-style: dashed; border-color: var(--fg); color: var(--fg); }
+  .tag.none { color: #b0aea6; }
+  .err { color: var(--acc); font-weight: 600; }
+  .legend { color: var(--dim); margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>DRUMMER FRAMES</h1>
+<p class="sub">Every drawing in <code>assets/drummer.webp</code> and how the visualizer uses it, read live from
+<code>js/drummer.js</code> (reload after editing it). Labels are the KIND string there, indexed by drawing id. Click a sound to
+see which drawings can play it.</p>
+
+<h2>Sounds → drawings</h2>
+<table id="sounds"><thead><tr><th>Sound</th><th>Drawings (kind)</th><th>Hand</th><th>On a fast run, the other hand</th><th>Notes</th></tr></thead><tbody></tbody></table>
+<p class="legend">Solid tag: the drawing's own sound. Dashed tag: used for that sound only when hands alternate on a fast run (hand hits less than an 8th apart).</p>
+
+<div id="kinds"></div>
+
+<script>
+(async () => {
+  const KINDS = {
+    R: 'stick on the right cymbal (ride)', L: 'stick on the left cymbal', S: 'both hands on the left drum (snare)',
+    T: 'tap on the right drum, left hand across, right arm up', X: 'right stick on the right drum, left arm cocked',
+    Y: 'arms crossed: left stick over on the snare, right arm up',
+    B: 'both sticks flat on both drums', U: 'both arms up', H: 'head down on the right drum', h: 'head thrown back',
+    D: 'a double: left stick on the snare and the left cymbal at once', W: 'a swing between hits', Z: 'stopped, swaying, eyes closed', I: 'waiting, no sticks', '.': 'not used (a prop gag)',
+  };
+  const ORDER = 'RLSDTXYBUHhWZI.';
+  const SOUNDS = [
+    ['h', 'Ride / hat (8ths)', 'Also the cymbal on kicks that come with it'],
+    ['S', 'Snare', 'Every amen snare lands with the ride; played heavy (on a quarter-note beat, or turned up) it shows as the snare alone. Rolls walk his crossed-stick runs after the first stroke'],
+    ['SR', 'Snare + ride', 'The same snare off the beat, or turned down: both drums at once (wind-up and recoil borrowed from the snare)'],
+    ['g', 'Ghost snare', 'Quiet snares (7, 9, 15 …). Runs of them walk his crossed-stick runs: X Y X Y'],
+    ['crash', 'Crash', 'Bar 4, step 10 of the break'],
+    ['head', 'Head-butt', 'A snare in the last two beats of the pattern\'s 4th bar'],
+    ['up', 'Gap (no slice)', 'Both arms up'],
+  ];
+  const HANDNAME = { l: 'left', r: 'right' };
+  const kindsEl = document.getElementById('kinds');
+  try {
+    const src = await (await fetch('../../js/drummer.js', { cache: 'no-store' })).text();
+    const cut = (from, to) => {
+      const a = src.indexOf(from), b = src.indexOf(to, a);
+      if (a < 0 || b < 0) throw new Error('could not find ' + from + ' … ' + to + ' in js/drummer.js');
+      return src.slice(a, b);
+    };
+    const data = cut('const F0', 'const img = new Image') + cut('const WANT', 'function plan');
+    const D = new Function(data + '; return { F0, SEQ, KIND, EV, LEAD, SWAY, WANT, HAND, SIDE, cellAt };')();
+    const { SEQ, KIND, EV, LEAD, SWAY, WANT, HAND, SIDE, cellAt } = D;
+    const N = KIND.length;
+    const kindOf = c => (c < KIND.length ? KIND[c] : '+');
+
+    // what each drawing is used for
+    const use = Array.from({ length: N }, () => ({ hits: 0, follow: 0, lead: 0, frames: 0 }));
+    SEQ.forEach(c => use[c].frames++);
+    for (const e of EV) {
+      use[cellAt(e.f)].hits++;
+      const seen = new Set();
+      for (let f = e.f + 1; f < e.end; f++) { const c = cellAt(f); if (c !== cellAt(e.f) && !seen.has(c)) { seen.add(c); use[c].follow++; } }
+    }
+    LEAD.forEach(L => new Set(L.cells).forEach(c => use[c].lead++));
+    const sway = new Set(SWAY);
+
+    // sounds a drawing can play: its own (WANT), or the other hand's on a fast run (SIDE)
+    const plays = c => {
+      if (!use[c].hits) return [];
+      const k = kindOf(c), out = [];
+      for (const [role, name] of SOUNDS) {
+        if ((WANT[role] || '').includes(k)) out.push({ role, name, alt: false });
+        else if (SIDE[role] && Object.values(SIDE[role]).join('').includes(k)) out.push({ role, name, alt: true });
+      }
+      return out;
+    };
+
+    // sounds table
+    const tb = document.querySelector('#sounds tbody');
+    for (const [role, name, note] of SOUNDS) {
+      const own = WANT[role] || '', side = SIDE[role];
+      const hand = [...own].map(k => HANDNAME[HAND[k]] || 'both / none').filter((v, i, a) => a.indexOf(v) === i).join(', ');
+      const alt = side
+        ? Object.entries(side)
+            .map(([h, ks]) => [h, [...ks].filter(k => !own.includes(k))])
+            .filter(([h, ks]) => ks.length)
+            .map(([h, ks]) => `${HANDNAME[h]}: ${ks.map(k => `<span class="k">${k}</span>`).join(' ')}`)
+            .join('<br>') || 'has both already'
+        : '—';
+      const tr = document.createElement('tr');
+      tr.className = 'sound'; tr.dataset.role = role;
+      tr.innerHTML = `<td>${name}</td><td>${[...own].map(k => `<span class="k">${k}</span> ${KINDS[k]}`).join('<br>')}</td><td>${hand}</td><td>${alt}</td><td>${note}</td>`;
+      tb.appendChild(tr);
+    }
+    const extra = [
+      ['Kick', '—', 'foot', 'Only the bass drum swells (DRUM in js/drummer.js); no drawing of its own'],
+      ['Stopped', 'idle sway: ' + [...sway].map(c => '#' + c).join(' '), '—', 'One sway per two beats at the BPM'],
+    ];
+    for (const [a, b, c, d] of extra) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${a}</td><td>${b}</td><td>${c}</td><td>—</td><td>${d}</td>`;
+      tb.appendChild(tr);
+    }
+
+    // drawings, grouped by kind
+    const cellsByKind = {};
+    for (let c = 0; c < N; c++) (cellsByKind[kindOf(c)] ??= []).push(c);
+    const els = [];
+    for (const k of ORDER) {
+      const list = cellsByKind[k];
+      if (!list) continue;
+      const h2 = document.createElement('h2');
+      h2.innerHTML = `<span class="k">${k}</span> ${KINDS[k] || ''} <small>${list.length} drawing${list.length > 1 ? 's' : ''}${HAND[k] ? ' · ' + HANDNAME[HAND[k]] + ' hand' : ''}</small>`;
+      kindsEl.appendChild(h2);
+      const grid = document.createElement('div');
+      grid.className = 'grid';
+      for (const c of list) {
+        const u = use[c], p = plays(c), el = document.createElement('div');
+        el.className = 'cell';
+        el.dataset.roles = p.map(x => x.role).join(' ');
+        const S = 174 / 232;
+        const tags = [];
+        p.forEach(x => tags.push(`<span class="tag ${x.alt ? 'alt' : 'play'}">${x.name}</span>`));
+        if (u.hits) tags.push(`<span class="tag">hit ×${u.hits}</span>`);
+        if (u.follow) tags.push(`<span class="tag">follow-through ×${u.follow}</span>`);
+        if (u.lead) tags.push(`<span class="tag">wind-up ×${u.lead}</span>`);
+        if (sway.has(c)) tags.push('<span class="tag play">idle sway</span>');
+        if (!tags.length) tags.push('<span class="tag none">not shown</span>');
+        el.innerHTML = `<div class="img" style="background-image:url(../../assets/drummer.webp);background-size:${3712 * S}px ${1440 * S}px;background-position:-${(c % 16) * 232 * S}px -${Math.floor(c / 16) * 180 * S}px"></div>
+          <div class="id"><b>#${c}</b><span>kind ${k}${HAND[k] ? ' · ' + HANDNAME[HAND[k]] : ''}${u.frames ? ' · ' + u.frames + ' fr' : ''}</span></div>
+          <div class="tags">${tags.join('')}</div>`;
+        grid.appendChild(el);
+        els.push(el);
+      }
+      kindsEl.appendChild(grid);
+    }
+
+    // click a sound: dim every drawing that can't play it
+    let on = null;
+    document.querySelectorAll('tr.sound').forEach(tr => tr.addEventListener('click', () => {
+      on = on === tr.dataset.role ? null : tr.dataset.role;
+      document.querySelectorAll('tr.sound').forEach(t => t.classList.toggle('on', t.dataset.role === on));
+      els.forEach(el => {
+        const r = el.dataset.roles.split(' ');
+        el.classList.toggle('dim', !!on && !r.includes(on));
+        el.classList.toggle('hit', !!on && r.includes(on));
+      });
+    }));
+  } catch (e) {
+    kindsEl.innerHTML = `<p class="err">Couldn't read the drummer's data: ${e.message}</p>`;
+    console.error(e);
+  }
+})();
+</script>
+</body>
+</html>

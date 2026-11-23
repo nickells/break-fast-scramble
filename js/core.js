@@ -72,13 +72,9 @@ const UI_DEF = {
   live: true,
   oneRow: true,
   q: 'bar',
-  colors: 'kit',
-  src: 140,
   out: 165,
   mode: 'chop',
   chaos: 0.35,
-  keepIntro: false,
-  lockN: 8,
   retrig: true,
   pitch: true,
   rev: true,
@@ -94,8 +90,13 @@ const UI_DEF = {
   keyShow: false, // source slices + key panel: hidden until asked for
 };
 const UI = Object.assign({}, UI_DEF, JSON.parse(localStorage.getItem('ascr.ui') || '{}'));
-const legacyIntroLock = UI.lock === true;
+// saves from when the start of each pattern could be locked to the source (KEEP INTRO, or the older lock): patterns
+// made with it are remade without it
+const legacyIntroLock = UI.lock === true || UI.keepIntro === true;
 delete UI.lock;
+delete UI.keepIntro;
+delete UI.lockN;
+delete UI.src; // the source tempo is the amen's (S.src)
 delete UI.ideasShow;
 delete UI.keyOpen; // replaced by keyShow (default hidden)
 if ('quant' in UI) {
@@ -114,9 +115,7 @@ if ('quant' in UI) {
 });
 const saveUI = () => localStorage.setItem('ascr.ui', JSON.stringify(UI));
 const S = {
-  get src() {
-    return UI.srcBpm || 140;
-  },
+  src: 140, // the amen's tempo
   get out() {
     return UI.out;
   },
@@ -125,9 +124,6 @@ const S = {
   },
   get chaos() {
     return UI.chaos;
-  },
-  get introSteps() {
-    return UI.keepIntro ? Math.min(SPB, Math.max(1, UI.lockN | 0)) : 0;
   },
 };
 const OPT = {

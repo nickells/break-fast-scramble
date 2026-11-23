@@ -31,32 +31,32 @@
 const STYLES = [
   {
     k: 'sJungle', id: 'jungle', label: 'JUNGLE', def: 1,
-    tip: 'Amen edits as the source sets do them: the break cut into beat-sized pieces and put back in a new order, call and answer, dotted echoes, the kick again on the "&" of 3, snare fills on the answer bars, rolls at phrase ends. Measured from the vol 1 and vol 3 amen edits and your 165 edit.',
+    tip: 'Classic Amen cuts. The kick doubles back on the "&" of 3, and the snare answers with fills and rolls.',
     v: { cut: 0.45, smooth: 0, hats: 0, loop: 0, call: 0.5, turn: 0.1, echo6: 0.3, kick3: 0.3, keep: 0.45, sn24: 0.2, cell2: 0.2, snfwd: 0.35, ht: 0, ghost: 0.05, pick: 0.15, rollEnd: 0.5, rollScatter: 0.05, rev: 0.35, drag: 0.2, gap: 0.22 },
   },
   {
     k: 'sFunk', id: 'drumfunk', label: 'DRUMFUNK', def: 0,
-    tip: 'Jungle\'s busier, live-feeling cousin: smaller pieces, quiet pickups, short hat and ghost-snare shuffles, and few exact repeats.',
+    tip: 'Fine cuts, ghost snares, and shuffling hats. The little hits do the talking.',
     v: { cut: 0.65, smooth: 0, hats: 0, loop: 0, call: 0.3, turn: 0, echo6: 0.35, kick3: 0.2, keep: 0.5, sn24: 0.2, cell2: 0.3, snfwd: 0.4, ht: 0, ghost: 0.45, pick: 0.7, rollEnd: 0.35, rollScatter: 0.1, rev: 0.15, drag: 0.05, gap: 0.1 },
   },
   {
     k: 'sLiquid', id: 'liquid', label: 'LIQUID', def: 0,
-    tip: 'Liquid: a hit on every 8th that sounds out into the next 16th (an even, rolling pulse), two hat sounds alternating in between, quiet pickups into the strong hits, one bar looped with a turnaround, almost no fills or ornaments. Measured from a 180 bpm liquid top loop.',
-    v: { cut: 0.25, smooth: 1, hats: 1, loop: 0.9, call: 1, turn: 0.65, echo6: 0.05, kick3: 0.1, keep: 0.1, sn24: 0.05, cell2: 0, snfwd: 0.1, ht: 0, ghost: 0.05, pick: 0.9, rollEnd: 0.1, rollScatter: 0, rev: 0.05, drag: 0.03, gap: 0 },
+    tip: 'An eighth-note glide, a roaming backbeat, and a quiet pickup into the turn.',
+    v: { cut: 0.25, smooth: 1, hats: 1, loop: 0.9, call: 1, turn: 0, echo6: 0.05, kick3: 0.1, keep: 0.1, sn24: 0.05, cell2: 0, snfwd: 0.1, ht: 0, ghost: 0.05, pick: 0.9, rollEnd: 0.1, rollScatter: 0, rev: 0.05, drag: 0.03, gap: 0 },
   },
   {
     k: 'sRoller', id: 'rollers', label: 'ROLLERS', def: 0,
-    tip: 'Rollers: the two-step (kick on 1 and the "&" of 3, snares on 2 and 4) kept rolling, whole bars of the break looped with small changes, built for momentum rather than surprise. A reading of the style, not measured from a reference.',
+    tip: 'A steady two-step. Whole bars roll by with just enough variation to keep moving.',
     v: { cut: 0.1, smooth: 0.3, hats: 0.4, loop: 0.6, call: 0.8, turn: 0.2, echo6: 0.1, kick3: 0.8, keep: 0.35, sn24: 0.1, cell2: 0.05, snfwd: 0.2, ht: 0, ghost: 0.05, pick: 0.4, rollEnd: 0.25, rollScatter: 0, rev: 0.1, drag: 0.05, gap: 0.05 },
   },
   {
     k: 'sHalf', id: 'halftime', label: 'HALFTIME', def: 0,
-    tip: 'Halftime: one snare per bar, on beat 3, so 170 feels like 85. Lots of space, a few long drags and gaps. KEEP INTRO can bring back the original opening snare on beat 2.',
+    tip: 'Snare on 3, long drags, and room to breathe. 170 feels like 85.',
     v: { cut: 0.3, smooth: 0.4, hats: 0.3, loop: 0.5, call: 0.7, turn: 0.1, echo6: 0.1, kick3: 0.1, keep: 0.3, sn24: 0, cell2: 0.1, snfwd: 0, ht: 1, ghost: 0.1, pick: 0.3, rollEnd: 0.2, rollScatter: 0, rev: 0.2, drag: 0.3, gap: 0.3 },
   },
   {
     k: 'sDrill', id: 'drill', label: 'DRILL', def: 0,
-    tip: 'Drill \'n\' bass, the mid-90s Warp sound: the break rebuilt almost 16th by 16th, bars that rarely repeat, stutters, and rolls scattered anywhere, not just at phrase ends. Turn ALLOW RETRIG and PITCH on to hear it. A reading of the style, not measured from a reference.',
+    tip: 'Sixteenth-note cuts, stray rolls, and stutters that show up wherever they like.',
     v: { cut: 1, smooth: 0, hats: 0, loop: 0, call: 0.05, turn: 0, echo6: 0.4, kick3: 0.2, keep: 0.1, sn24: 0.3, cell2: 0.7, snfwd: 0.3, ht: 0, ghost: 0.1, pick: 0.2, rollEnd: 0.9, rollScatter: 0.8, rev: 0.4, drag: 0.2, gap: 0.2 },
   },
 ];
@@ -205,10 +205,31 @@ function hatVoices(r) {
     b = pickBy(r, i => hatScore(i) + 0.5 * (slices[i].zhi || 0), new Set([a]));
   return [a, b];
 }
-// a hit on `pos` that sounds out into its own tail on pos+1 (each half only if it's past the START LOCK steps)
+// a hit on `pos` that sounds out into its own tail on pos+1 (each half only if it's past the bar's locked steps)
 function pair(bar, pos, s, lo) {
   if (pos >= lo) bar[pos] = ev(s);
   if (pos + 1 >= lo) bar[pos + 1] = ev(s + 1);
+}
+function moveSecondSnare(bar, at) {
+  // Swap the hit and its tail together so the backbeat moves without doubling.
+  const from = [12, 10].find(pos => slices[bar[pos].s]?.role === 'S');
+  if (from == null || from === at) return false;
+  const moved = bar.slice(from, from + 2);
+  bar.splice(from, 2, ...bar.slice(at, at + 2));
+  bar.splice(at, 2, ...moved);
+  return true;
+}
+function liquidTurn(r, bar) {
+  const moves = OPT.gap ? ['snare', 'restart', 'breath'] : ['snare', 'restart'];
+  const move = moves[Math.floor(r() * moves.length)];
+  if (move === 'snare' && moveSecondSnare(bar, 14)) return 'late snare';
+  if (move === 'breath') {
+    bar.splice(14, 2, { s: -1 }, { s: -1 });
+    return 'space at the turn';
+  }
+  const at = chance(r, 0.7) ? 6 : 8;
+  bar.splice(at, SPB - at, ...copyBar(bar.slice(0, SPB - at)));
+  return 'restart at the turn';
 }
 const quietScore = i =>
   (slices[i].role === 'g' || slices[i].role === 'h' ? 1 : 0) - 0.6 * slices[i].zrms - (isAccent(i) ? 1 : 0);
@@ -245,7 +266,7 @@ const IDEAS = [
         pair(bar, pos, s, lo);
         n++;
       }
-      cx.smooth[b] = n / Math.max(1, open); // share of the 8ths it could touch (START LOCK steps don't count)
+      cx.smooth[b] = n / Math.max(1, open); // share of the 8ths it could touch (locked steps don't count)
       return n ? `smooth ${n}/8` : null;
     },
   },
@@ -268,6 +289,17 @@ const IDEAS = [
         n++;
       }
       return n ? 'hats' : null;
+    },
+  },
+  {
+    id: 'liquidBackbeat', stage: 'feel', amount: liquid => 0.55 * liquid,
+    apply(r, bar) {
+      if (!moveSecondSnare(bar, 10)) return null;
+      if (chance(r, 0.7)) {
+        const kick = pickBy(r, i => roleScore(i, 'K') + (tailOK(i) ? 0.8 : -0.8));
+        pair(bar, 6, kick, 0);
+      }
+      return 'early backbeat';
     },
   },
   /* ---- SHAPE: once per pattern, a bar restated from bar 1 ---- */
@@ -363,7 +395,7 @@ const IDEAS = [
       let n = 0;
       for (let p = 1; p < SPB; p += 2) {
         const rs = cx.sub(p);
-        if (rs() >= MIX.ghost || p < lo || hitAt(bar[p]) || bar[p].h) continue;
+        if (rs() >= MIX.ghost || p < lo || bar[p].s < 0 || hitAt(bar[p]) || bar[p].h) continue;
         bar[p] = ev(pickBy(rs, quietScore));
         n++;
       }
@@ -378,6 +410,7 @@ const IDEAS = [
         used = [];
       for (const [p, pr] of [[15, 0.9], [9, 0.75], [7, 0.3], [11, 0.3], [3, 0.25]]) {
         if (used.length >= want || p < lo || !chance(r, pr)) continue;
+        if (bar[p].s < 0) continue;
         if (p < SPB - 1 && !hitAt(bar[p + 1])) continue; // a pickup leads into a hit
         bar[p] = ev(pickBy(r, quietScore));
         used.push(p);
@@ -403,7 +436,8 @@ function applyIdeas(R, p, genes) {
     used = [],
     cx = { R, smooth: [0, 0, 0, 0] },
     shape = {},
-    src = [0, 1, 2, 3];
+    src = [0, 1, 2, 3],
+    liquid = styleShare('sLiquid');
   const perBar = stage =>
     bars.forEach((bar, b) => {
       const groups = {};
@@ -414,7 +448,8 @@ function applyIdeas(R, p, genes) {
         if (m.group && (groups[m.group] || 0) >= cap) continue;
         const key = m.id + ':' + src[b],
           rm = R(key);
-        if (!m.each && rm() >= MIX[m.id]) continue;
+        const amount = m.amount?.(liquid) ?? MIX[m.id];
+        if (!m.each && rm() >= amount) continue;
         cx.sub = tag => R(key + ':' + tag);
         const lab = m.apply(rm, bar, bar.lo || 0, bars[b - 1] || bar, bars[0], b, cx);
         if (!lab) continue;
@@ -424,22 +459,27 @@ function applyIdeas(R, p, genes) {
     });
   perBar('feel');
   for (const m of IDEAS) {
-    if (m.stage !== 'shape' || R(m.id)() >= MIX[m.id]) continue;
+    if (m.stage !== 'shape') continue;
+    const roll = R(m.id)(),
+      local = m.id === 'turn' && roll >= MIX.turn && roll < MIX.turn + 0.65 * liquid;
+    if (!local && roll >= MIX[m.id]) continue;
     const A = bars[0];
-    bars[m.to] = m.shift ? A.map((_, k) => ({ ...A[(k + m.shift) % SPB] })) : copyBar(A);
+    bars[m.to] = m.shift && !local ? A.map((_, k) => ({ ...A[(k + m.shift) % SPB] })) : copyBar(A);
     cx.smooth[m.to] = cx.smooth[0];
     if (!m.shift) src[m.to] = 0;
-    shape[m.id] = true;
-    used.push(m.say);
+    shape[m.id] = local ? 'local' : true;
+    if (!local) used.push(m.say);
   }
   perBar('move');
+  if (shape.turn === 'local') used.push(liquidTurn(R('liquidTurn'), bars[BARS - 1]));
   perBar('late');
   genes.grp = (genes.grp || []).concat(used);
   // how it reads, for the name: mostly smoothed 8ths = liquid; bar 3 restating bar 1 = call & answer; else its cut
   const sm = cx.smooth.reduce((a, b) => a + b, 0) / BARS;
   genes.eng = sm >= 0.7 ? 'liq' : shape.call ? 'phrase' : 'chop';
   genes.tpl =
-    mixWord() + ' · ' + (shape.loop ? 'A A ' : 'A B ') + (shape.call ? 'A ' : 'C ') + (shape.turn ? 'A«2' : 'D');
+    mixWord() + ' · ' + (shape.loop ? 'A A ' : 'A B ') + (shape.call ? 'A ' : 'C ') +
+    (shape.turn === 'local' ? 'A′' : shape.turn ? 'A«2' : 'D');
   return bars.flat();
 }
 
@@ -478,6 +518,15 @@ function finishGroove(R, p, genes, grooves) {
     } else if (grooves[b] === 'rollers') {
       for (const [pos, role] of [[0, 'K'], [4, 'S'], [10, 'K'], [12, 'S']])
         anchor(start + pos, role);
+      // Keep the backbeat above the extra snare an eighth note later.
+      const extra = p[start + 14], tail = p[start + 15];
+      if (slices[extra.s]?.role === 'S' && !extra.h && (!OPT.retrig || extra.x <= 1)) {
+        extra.v = Math.min(extra.v || 0, -13);
+        if (tail.s === extra.s + 1 && !isAccent(tail.s) && !tail.h &&
+          (!OPT.retrig || tail.x <= 1) && !extra.r && !tail.r && extra.p === tail.p) {
+          tail.v = Math.min(tail.v || 0, extra.v);
+        }
+      }
     }
 
     const rs = R('shuffle:' + b);
@@ -504,24 +553,20 @@ function refreshGeneratedCards() {
     let any = false;
     for (const c of cards) {
       if (!followsKnobs(c)) continue;
-      const np = generate(c.genes.seed),
-        st = annotateHalf(np.steps),
-        old = c.steps.map(tok);
+      const np = generate(c.genes.seed);
       c.genes = np.genes;
-      if (toStr(st) === c.str) {
-        renderCard(c); // same steps, maybe new tags
-        continue;
+      const next = toStr(np.steps);
+      if (next !== c.str) {
+        if (ED.card === c) clearSel();
+        commitSteps(c, np.steps);
+        c.edited = false;
+        c.orig = next;
+        any = true;
       }
-      if (ED.card === c) clearSel();
-      commitSteps(c, st);
-      c.edited = false;
-      c.orig = toStr(np.steps);
-      renderCard(c);
-      c.cells.forEach((x, i) => tok(c.steps[i]) !== old[i] && x.classList.add('landed'));
-      any = true;
+      renderCard(c, { reuseCells: true });
     }
     if (any) saveCards();
-    if (markK) markIdea(markK); // rebuilt cells: show the highlight again
+    if (markK) markIdea(markK); // changed cells: show the highlight again
   });
 }
 /* Hover a mixed-in style to highlight what it changes on each eligible card. */

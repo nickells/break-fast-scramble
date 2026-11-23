@@ -24,7 +24,8 @@ const isAccent = i => {
 };
 function pickCell(r, len, pos, prevEnd, accent) {
   const ch = S.chaos;
-  let best = [];
+  let best = 0,
+    bestScore = -Infinity;
   for (let i = 0; i < N; i++) {
     let sc = 0;
     sc += 2.0 * roleFit(i, pos); // right drum on the strong positions
@@ -33,10 +34,16 @@ function pickCell(r, len, pos, prevEnd, accent) {
     if (prevEnd != null && i === prevEnd % N) sc += 1.5 * (1 - ch); // plain continuation
     if (i + len > N) sc -= 2; // avoid wrapping past the end
     if (accent) sc += isAccent(i) ? 3 : -1; // odd groupings: start each chunk on a hit so the grouping is audible
-    best.push([sc + r() * (0.8 + 3 * ch), i]);
+    // and keep the beat: a chunk whose beats would fall on the ring between hits (a slice with nothing struck) loses
+    // the pulse, so each such beat counts against it
+    for (let k = (4 - (pos % 4)) % 4; k < len; k += 4) if (slices[(i + k) % N].role === '.') sc -= 1.5;
+    sc += r() * (0.8 + 3 * ch);
+    if (sc > bestScore) {
+      bestScore = sc;
+      best = i;
+    }
   }
-  best.sort((a, b) => b[0] - a[0]);
-  return best[0][1];
+  return best;
 }
 /* ---------- engines ---------- */
 /* ---------- liquid helpers (SMOOTH, HATS and PICKUPS in ideas.js), from a 180 bpm liquid top loop ----------
@@ -170,7 +177,7 @@ function score(p, skipLast, beats = [4, 12]) {
    in each bar, ornaments), all derived from the seed. Moving the style puck morphs a card, and returning to the same
    mix restores its pattern. */
 const stream = (seed, tag) => mulberry((seed ^ hashStr(tag)) >>> 0);
-function generate(seed, introSteps = S.introSteps) {
+function generate(seed) {
   MIX = mixStyles();
   const R = tag => stream(seed, tag),
     genes = { seed };
@@ -188,7 +195,6 @@ function generate(seed, introSteps = S.introSteps) {
     grooves = Array.from({ length: BARS }, (_, b) => grooveForBar(R, b)),
     p = ornament(R, applyIdeas(R, best.p, g), g, grooves);
   finishGroove(R, p, g, grooves);
-  if (introSteps) p.splice(0, introSteps, ...run(0, introSteps));
   return { steps: clean(p), genes: g };
 }
 
@@ -264,7 +270,7 @@ function regenSel(p, ix, tries = 16) {
   };
   let best = null;
   const cands = [];
-  for (let t = 0; t < tries; t++) cands.push(generate((Math.random() * 2 ** 32) >>> 0, 0).steps);
+  for (let t = 0; t < tries; t++) cands.push(generate((Math.random() * 2 ** 32) >>> 0).steps);
   for (const c of cands) {
     // a half-speed drag only makes sense whole: skip candidates that would cut one in two
     if (ix.some(i => c[i].h && ((c[i - 1]?.h && !sel.has(i - 1)) || (c[i + 1]?.h && !sel.has(i + 1)))))

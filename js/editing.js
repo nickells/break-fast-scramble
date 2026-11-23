@@ -1,10 +1,12 @@
 'use strict';
 
 /* ---------- marquee editing ----------
-   ⌘-drag anywhere (outside the header/filter bar): marquee-select steps in the card it covers most.
+   Drag from an unused area of a card, or ⌘-drag outside the controls, to marquee-select steps.
    Drag the selection onto any card: swaps with what's there (same card or another loop). ⌥ while dropping: clone (source untouched).
    Esc / click elsewhere clears.  ⌘Z undoes. */
-const ED = { card: null, mode: null, suppress: false, eatClick: false, undo: [], tgt: null };
+const ED = {
+  card: null, mode: null, suppress: false, eatClick: false, undo: [], tgt: null, pendingDrops: 0,
+};
 const rc = i => [Math.floor(i / SPB), i % SPB];
 const plainE = e => ({ s: e.s, r: !!e.r, h: !!e.h, x: e.x || 1, p: e.p || 0, ...(e.v ? { v: e.v } : {}) });
 function setupEdit(card) {}
@@ -264,6 +266,58 @@ function fly(card, idx, from, to, ms = 240) {
   setTimeout(() => g.el.remove(), ms + 30);
   return g;
 }
+function startMarquee({ clientX, clientY }, command, add = false) {
+  const base = add && ED.card ? { card: ED.card, sel: new Set(ED.card.sel) } : null;
+  if (!base) clearSel();
+  ED.mode = 'marquee';
+  ED.x0 = clientX;
+  ED.y0 = clientY;
+  ED.base = base;
+  ED.marqueeClick = command;
+  ED.box = document.createElement('div');
+  ED.box.className = 'marq';
+  document.body.appendChild(ED.box);
+  dragOn('crosshair');
+}
+/* select exactly one step (what a plain click or ⌘-click on a step does) */
+function selectOne(h) {
+  if (ED.card && ED.card !== h.card) clearSel();
+  ED.card = h.card;
+  h.card.sel = new Set([h.i]);
+  ED.anchor = { card: h.card, i: h.i };
+  h.card.cells.forEach((c, k) => c.classList.toggle('sel', k === h.i));
+  h.card.el.classList.add('editing');
+}
+/* pick up the card's selection, grabbed at step h; ⌥ (or the read-only ORIGINAL) clones instead of moving */
+function startDrag(e, h) {
+  ED.mode = 'drag';
+  ED.grab = h.i;
+  ED.tgt = null;
+  dragOn(e.altKey || h.card.ro ? 'copy' : 'grabbing');
+  const src = [...h.card.sel].sort((a, b) => a - b),
+    g = ghostOf(h.card, src);
+  g.el.style.left = g.el.style.top = '0px';
+  ED.g = {
+    el: g.el,
+    x: g.x,
+    y: g.y,
+    tx: g.x,
+    ty: g.y,
+    s: 1,
+    ts: 1.06,
+    ox: e.clientX - g.x,
+    oy: e.clientY - g.y,
+    home: [g.x, g.y],
+    src,
+    active: true,
+  };
+  ED.g.alt = e.altKey || !!h.card.ro;
+  ED.orig = new Map([[h.card, h.card.steps.map(plainE)]]);
+  ED.pkey = null;
+  syncLift();
+  springLoop(ED.g);
+}
+const reorderHeader = '#cards > .card > .top'; // ORIGINAL included: it lands wherever it was added, so it moves like any card
 document.addEventListener(
   'pointerdown',
   e => {
@@ -274,17 +328,7 @@ document.addEventListener(
       // marquee, from anywhere
       e.preventDefault();
       e.stopPropagation();
-      const add = e.shiftKey && ED.card;
-      if (!add) clearSel();
-      ED.mode = 'marquee';
-      ED.x0 = e.clientX;
-      ED.y0 = e.clientY;
-      ED.base = add ? { card: ED.card, sel: new Set(ED.card.sel) } : null;
-      const m = document.createElement('div');
-      m.className = 'marq';
-      document.body.appendChild(m);
-      ED.box = m;
-      dragOn('crosshair');
+      startMarquee(e, true, e.shiftKey);
       return;
     }
     const h = e.target.closest('.card .grid') ? hit(e.clientX, e.clientY) : null;
@@ -303,46 +347,45 @@ document.addEventListener(
       ED.eatClick = true;
       return;
     }
+    if (h && e.altKey && !(ED.card === h.card && h.card.sel?.has(h.i))) {
+      // ⌥-drag an unselected step: take just that step and clone it, no need to select it first
+      e.preventDefault();
+      e.stopPropagation();
+      selectOne(h);
+      startDrag(e, h);
+      return;
+    }
     if (h && ED.card === h.card && h.card.sel?.has(h.i)) {
       // start dragging the selection
       e.preventDefault();
       e.stopPropagation();
-      ED.mode = 'drag';
-      ED.grab = h.i;
-      ED.tgt = null;
-      dragOn(e.altKey || h.card.ro ? 'copy' : 'grabbing');
-      const src = [...h.card.sel].sort((a, b) => a - b),
-        g = ghostOf(h.card, src);
-      g.el.style.left = g.el.style.top = '0px';
-      ED.g = {
-        el: g.el,
-        x: g.x,
-        y: g.y,
-        tx: g.x,
-        ty: g.y,
-        s: 1,
-        ts: 1.06,
-        ox: e.clientX - g.x,
-        oy: e.clientY - g.y,
-        home: [g.x, g.y],
-        src,
-        active: true,
-      };
-      ED.g.alt = e.altKey || !!h.card.ro;
-      ED.orig = new Map([[h.card, h.card.steps.map(plainE)]]);
-      ED.pkey = null;
-      syncLift();
-      springLoop(ED.g);
+      startDrag(e, h);
       return;
     }
     if (ED.card && !e.target.closest('.rp')) {
       clearSel();
       if (e.target.closest('.card .grid')) ED.eatClick = true;
     } // a click that clears shouldn't also start playback
+    if (e.target.closest('#cards > .card:not(.ph)') &&
+        !e.target.closest('button, .lgut, ' + reorderHeader) && e.pointerType !== 'touch' &&
+        !e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey) {
+      const { clientX, clientY, pointerId } = e;
+      ED.pendingMarquee = { clientX, clientY, pointerId };
+    }
   },
   true,
 );
 addEventListener('pointermove', e => {
+  const start = ED.pendingMarquee;
+  if (start && e.pointerId === start.pointerId) {
+    if (!(e.buttons & 1)) ED.pendingMarquee = null;
+    else if (Math.hypot(e.clientX - start.clientX, e.clientY - start.clientY) >= 4) {
+      ED.pendingMarquee = null;
+      // The marquee suppresses playback itself, so leave the next click alone.
+      ED.eatClick = false;
+      startMarquee(start, false);
+    }
+  }
   if (ED.mode === 'marquee') {
     const x0 = Math.min(ED.x0, e.clientX),
       x1 = Math.max(ED.x0, e.clientX),
@@ -437,11 +480,24 @@ addEventListener('pointermove', e => {
   }
 });
 const edEnd = e => {
+  const pm = ED.pendingMarquee;
+  if (pm?.pointerId === e.pointerId) {
+    ED.pendingMarquee = null;
+    // a plain click (no drag) on a step selects it, the same as ⌘-click; clicks between steps take the nearest one
+    if (!ED.mode && e.type === 'pointerup' && Math.hypot(e.clientX - pm.clientX, e.clientY - pm.clientY) < 4) {
+      const onGrid = document.elementFromPoint(pm.clientX, pm.clientY)?.closest('.card .grid'),
+        h = onGrid && nearHit(pm.clientX, pm.clientY, 0);
+      if (h) {
+        selectOne(h);
+        ED.eatClick = true; // the grid's click would otherwise start playback
+      }
+    }
+  }
   if (!ED.mode) return;
   if (ED.mode === 'marquee') {
     ED.box?.remove();
     ED.box = null;
-    if (Math.abs(e.clientX - ED.x0) < 4 && Math.abs(e.clientY - ED.y0) < 4) {
+    if (ED.marqueeClick && Math.abs(e.clientX - ED.x0) < 4 && Math.abs(e.clientY - ED.y0) < 4) {
       // ⌘-click: select that one step (⌘⇧-click toggles it in/out of the selection)
       const h = hit(e.clientX, e.clientY);
       if (h) {
@@ -516,12 +572,17 @@ const edEnd = e => {
       if (clone) A.cells.forEach(c => c.classList.remove('lifted'));
       // 2) then the swap: what was there flies back to where the selection came from
       if (!clone) setTimeout(() => fly(B, T.tg, tgtPos, srcPos, FLY), FLASH - 40);
+      ED.pendingDrops++;
       setTimeout(
         () => {
-          applyEdit(A, T.src, B, T.tg, clone);
-          if (G) {
-            G.dead = true;
-            G.el.remove();
+          try {
+            applyEdit(A, T.src, B, T.tg, clone);
+          } finally {
+            ED.pendingDrops--;
+            if (G) {
+              G.dead = true;
+              G.el.remove();
+            }
           }
         },
         clone ? FLASH : FLASH - 40 + FLY,
@@ -542,17 +603,15 @@ const edEnd = e => {
   ED.suppress = true;
   setTimeout(() => (ED.suppress = false), 0);
 };
-/* ---- card rearranging: drag a card by its header onto another card to swap the two (ORIGINAL stays first) ---- */
+/* ---- card rearranging: drag a card by its header onto another card to swap the two ---- */
 (() => {
   let D = null;
-  const main = $('#cards'),
-    fixed = el => el.classList.contains('ro');
+  const main = $('#cards');
   document.addEventListener('pointerdown', e => {
     if (e.button || e.metaKey || e.shiftKey || D) return;
-    const top = e.target.closest('#cards>.card>.top');
+    const top = e.target.closest(reorderHeader);
     if (!top || e.target.closest('button')) return;
     const el = top.parentElement;
-    if (fixed(el)) return;
     D = { el, x0: e.clientX, y0: e.clientY, on: false, tg: null };
   });
   const start = () => {
@@ -602,7 +661,7 @@ const edEnd = e => {
       t = document
         .elementFromPoint(lr.left + lr.width / 2, lr.top + lr.height / 2)
         ?.closest('#cards>.card');
-    setTg(t && t !== D.ph && !fixed(t) ? t : null);
+    setTg(t && t !== D.ph ? t : null);
   });
   const clean = el => {
     el.classList.remove('lifting');
@@ -831,34 +890,19 @@ let barKey = '';
 function placeBar(force) {
   const bar = $('#selbar'),
     c = ED.card;
+  // docked above the playback row, so it stays up through drags and marquees instead of blinking
   // only touch the DOM when something it depends on changed (Safari resets the cursor on needless class/style writes)
-  const hide =
-    !c || c.ro || !c.sel?.size || ED.mode === 'drag' || ED.mode === 'marquee' || !cards.includes(c);
-  const key = hide
-    ? 'hidden'
-    : [
-        c.id,
-        [...c.sel].join('.'),
-        c.str,
-        scrollX,
-        scrollY,
-        innerWidth,
-        innerHeight,
-        $('#cards').scrollTop,
-      ].join('|');
+  const hide = !c || c.ro || !c.sel?.size || !cards.includes(c);
+  const key = hide ? 'hidden' : [c.id, [...c.sel].join('.'), c.str].join('|');
   if (!force && key === barKey) return;
   barKey = key;
   if (hide) {
     bar.classList.remove('show');
     return;
   }
-  const r = [...c.sel].map(i => c.cells[i].getBoundingClientRect()),
-    x0 = Math.min(...r.map(q => q.left)),
-    x1 = Math.max(...r.map(q => q.right)),
-    y0 = Math.min(...r.map(q => q.top)),
-    y1 = Math.max(...r.map(q => q.bottom));
   bar.classList.toggle('one', c.sel.size === 1); // Show the slice field directly for a single step.
   bar.classList.add('show');
+  bar.querySelector('.sb-where').textContent = selWhere([...c.sel]);
   // reflect the selection's current state
   const indices = [...c.sel],
     st = indices.map(i => c.steps[i]).filter(e => e.s >= 0),
@@ -890,14 +934,17 @@ function placeBar(force) {
   indicate('rev', voices.length > 0 && voices.every(e => e.r));
   indicate('half', st.length > 0 && st.every(e => e.h));
   [1, 2, 3, 4].forEach(x => indicate('x' + x, xs.length === 1 && xs[0] === x));
-  const w = bar.offsetWidth, h = bar.offsetHeight, cx = (x0 + x1) / 2;
-  const left = Math.max(8, Math.min(innerWidth - w - 8, cx - w / 2));
-  const below = y0 - h - 10 < 8;
-  const top = below ? y1 + 10 : y0 - h - 10;
-  bar.style.left = left + 'px';
-  bar.style.top = top + 'px';
-  bar.style.setProperty('--ax', Math.max(8, Math.min(w - 8, cx - left)) + 'px');
-  bar.classList.toggle('below', below);
+}
+/* "B2 · 5–8" for a run inside one bar; otherwise the bars it spans and how many steps */
+function selWhere(ix) {
+  ix = ix.slice().sort((a, b) => a - b);
+  const bars = [...new Set(ix.map(i => Math.floor(i / SPB) + 1))],
+    first = (ix[0] % SPB) + 1,
+    last = (ix[ix.length - 1] % SPB) + 1,
+    run = ix.every((v, k) => !k || v === ix[k - 1] + 1);
+  if (bars.length === 1 && run) return `B${bars[0]} · ${first === last ? first : first + '–' + last}`;
+  const span = bars.length === 1 ? 'B' + bars[0] : `B${bars[0]}–${bars[bars.length - 1]}`;
+  return `${span} · ${ix.length} steps`;
 }
 (function barLoop() {
   placeBar();
@@ -907,6 +954,7 @@ addEventListener('pointerup', edEnd);
 addEventListener('pointercancel', edEnd);
 // lost the release (window blur, or mouse let go outside the page): cancel rather than drop
 const edAbort = e => {
+  ED.pendingMarquee = null;
   if (!ED.mode) return;
   ED.tgt = null;
   edEnd({ type: 'abort', altKey: false, clientX: NaN, clientY: NaN });
