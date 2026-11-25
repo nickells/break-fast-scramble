@@ -33,7 +33,7 @@ const onControlChange = {
 const KTIP = {
   out: 'BPM — playback and export tempo. Changes live while a pattern plays.',
   scramble:
-    'SCRAMBLE — turn down for longer runs and fewer fills and effects. Turn up for freer jumps. 50% is the default for each style.',
+    'SCRAMBLE — turn down for longer runs and fewer fills and effects. Above 50%, freer jumps and occasional flourishes into bar 4.',
   res: 'RES — filter resonance: the peak at the cutoff. Higher is more squelchy.',
   vol: 'VOL — output level (live playback only).',
   swing:

@@ -84,7 +84,7 @@ document.addEventListener('keydown', e => {
   delete UI.srcBpm; // left in saves from when other breaks could be dropped in
   await loadArrayBuffer(u.buffer); // the amen, 140 bpm
   if (!restoreCards()) newBatch(false);
-  else if (styleMixMoved || legacyIntroLock || scrambleMigrated || S.restraint > 0 || !UI.sparseHalftime ||
+  else if (styleMixMoved || legacyIntroLock || scrambleMigrated || UI.scramble !== 0.5 || !UI.sparseHalftime ||
     (!UI.kicks && cards.some(c => followsKnobs(c) && !isTopLoop(c.steps)))) {
     refreshGeneratedCards();
   }

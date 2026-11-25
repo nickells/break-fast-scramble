@@ -84,6 +84,10 @@ function pickBy(r, score, avoid) {
   return best;
 }
 const hatScore = i => roleScore(i, 'h') + (tailOK(i) ? 1 : -1);
+function writeHalfDrag(p, at, len, source, reverse) {
+  for (let k = 0; k < len; k++)
+    p[at + k] = { s: (source + Math.floor(k / 2)) % N, r: reverse, h: true, x: 1, p: 0 };
+}
 /* ornaments: phrase-end rolls, scattered rolls, reverses, half-speed drags, gaps. How often each one happens comes from
    the style blend (MIX, see ideas.js), scaled by the amount of scramble. The ALLOW
    toggles still switch each kind off. */
@@ -141,7 +145,7 @@ function ornament(R, p, genes, grooves) {
       let s0 = p[pos].s;
       if (s0 < 0 || p[pos].x > 1 || p[pos].h) s0 = (b0 % N) + SPB - len; // slow down whatever was already playing there
       const rv = OPT.rev && chance(r, 0.3); // reversed half speed: a tape-rewind swell into the next downbeat (always ends the bar)
-      for (let k = 0; k < len; k++) p[pos + k] = { s: (s0 + Math.floor(k / 2)) % N, r: rv, h: true, x: 1, p: 0 };
+      writeHalfDrag(p, pos, len, s0, rv);
       o.push((rv ? 'rev-' : '') + 'half' + len / 2);
     }
   }
@@ -164,6 +168,61 @@ function clean(p) {
         : { ...e }
       : { ...e, x: OPT.retrig ? e.x : 1, p: OPT.pitch ? e.p : 0, r: OPT.rev ? e.r : false },
   );
+}
+
+function leadIntoFinalBar(R, p, genes, grooves) {
+  if (UI.scramble <= 0.5) return;
+  const r = R('bar 3 flourish'),
+    at = 3 * SPB - 2,
+    tail = p.slice(at, at + 2);
+  if (!chance(r, 0.8 * (2 * UI.scramble - 1)) ||
+    tail.some(e => e.s < 0 || e.h || (OPT.rev && e.r) || (OPT.retrig && e.x > 1))) return;
+
+  // Echo a short gesture from bar 4 when it fits. Longer half-speed runs need their full span.
+  const ending = p.slice(-2);
+  if (ending.every(e => e.s >= 0 && !e.h) &&
+    ending.some(e => (OPT.rev && e.r) || (OPT.retrig && e.x > 1))) {
+    p.splice(at, 2, ...ending.map(e => ({ ...e })));
+    genes.orn.push('bar 3 echoes bar 4');
+    return;
+  }
+
+  const options = [
+    ['roll', OPT.retrig ? MIX.rollEnd : 0],
+    ['reverse', OPT.rev ? MIX.rev : 0],
+    ['half', OPT.half && grooves[2] !== 'rollers' ? MIX.drag : 0],
+  ].filter(([, weight]) => weight > 0);
+  if (!options.length) return;
+  const [kind] = pickW(r, options, ([, weight]) => weight);
+  if (kind === 'roll') {
+    const snare = pickSnare(r);
+    p[at] = { ...ev(snare), x: 2 };
+    p[at + 1] = { ...ev(snare), x: 2, p: OPT.pitch && chance(r, 0.5) ? 2 : 0 };
+  } else if (kind === 'reverse') {
+    p[at + 1] = { ...tail[1], r: true };
+  } else {
+    p[at] = { ...ev(tail[0].s), h: true };
+    p[at + 1] = { ...p[at] };
+  }
+  genes.orn.push('bar 3 ' + kind);
+}
+
+function addScrambleDrag(R, p, genes, grooves) {
+  if (!OPT.half || UI.scramble <= 0.5 || p.some(e => e.h)) return;
+  const r = R('scramble drag');
+  // Give the upper half of the dial a chance independent of the style blend.
+  if (!chance(r, 0.56 * (2 * UI.scramble - 1))) return;
+  const plain = e => e.s >= 0 && !(OPT.rev && e.r) && !(OPT.retrig && e.x > 1);
+  const endings = [1, 2, 3].map(bar => ({ bar, end: (bar + 1) * SPB }))
+    .filter(({ end }) => p.slice(end - 2, end).every(plain));
+  if (!endings.length) return;
+  const { bar, end } = endings[Math.floor(r() * endings.length)],
+    source = p[end - 4].s,
+    canStretchPair = grooves[bar] !== 'rollers' && p.slice(end - 4, end - 2).every(plain) &&
+      (UI.kicks || !slices[(source + 1) % N].kickAudio),
+    len = canStretchPair && chance(r, 0.6) ? 4 : 2;
+  writeHalfDrag(p, end - len, len, p[end - len].s, OPT.rev && chance(r, 0.3));
+  genes.orn.push('half' + len / 2 + ' (bar ' + (bar + 1) + ')');
 }
 
 function swapKickSlices(R, p, selected) {
@@ -256,6 +315,8 @@ function generate(seed) {
     p = ornament(R, applyIdeas(R, best.p, g), g, grooves);
   finishGroove(R, p, g, grooves);
   if (!UI.kicks) swapKickSlices(R, p);
+  leadIntoFinalBar(R, p, g, grooves);
+  addScrambleDrag(R, p, g, grooves);
   return { steps: clean(p), genes: g };
 }
 
