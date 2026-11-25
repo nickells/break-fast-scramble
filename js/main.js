@@ -77,33 +77,14 @@ document.addEventListener('keydown', e => {
   if (card) launch(card);
   else stop();
 });
-addEventListener('dragover', e => {
-  e.preventDefault();
-  $('#drop').style.display = 'flex';
-});
-addEventListener('dragleave', e => {
-  if (!e.relatedTarget) $('#drop').style.display = 'none';
-});
-addEventListener('drop', async e => {
-  e.preventDefault();
-  $('#drop').style.display = 'none';
-  const f = e.dataTransfer.files[0];
-  if (!f) return;
-  stop();
-  const ab = await f.arrayBuffer(),
-    probe = await ctx.decodeAudioData(ab.slice(0));
-  UI.srcBpm = Math.round(((BARS * 4 * 60) / probe.duration) * 10) / 10; // treat a dropped break as 4 bars
-  await loadArrayBuffer(ab);
-  newBatch(false);
-});
 (async () => {
   const bin = atob(window.AMEN_WAV_B64),
     u = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-  delete UI.srcBpm;
-  await loadArrayBuffer(u.buffer); // built-in amen: 140 bpm
+  delete UI.srcBpm; // left in saves from when other breaks could be dropped in
+  await loadArrayBuffer(u.buffer); // the amen, 140 bpm
   if (!restoreCards()) newBatch(false);
-  else if (styleMixMoved || legacyIntroLock) refreshGeneratedCards();
+  else if (styleMixMoved || legacyIntroLock || scrambleMigrated || S.restraint > 0) refreshGeneratedCards();
   sizeCells(); // size the cells to the cards right away (otherwise they sit at the fallback size until the first change)
   if (location.hash === '#selftest')
     selftest().catch(e => {

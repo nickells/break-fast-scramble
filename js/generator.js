@@ -22,7 +22,7 @@ const isAccent = i => {
   const r = slices[((i % N) + N) % N].role;
   return r === 'K' || r === 'S';
 };
-function pickCell(r, len, pos, prevEnd, accent) {
+function pickCell(r, len, pos, prevEnd, accent, grounding = 0) {
   const ch = S.chaos;
   let best = 0,
     bestScore = -Infinity;
@@ -32,8 +32,22 @@ function pickCell(r, len, pos, prevEnd, accent) {
     sc += i % 4 === pos % 4 ? 1.2 * (1 - ch) : 0; // keep the slice's place within the beat (preserves swing/accent)
     sc += i % SPB === pos % SPB ? 0.6 * (1 - ch) : 0; // or its exact place in the bar
     if (prevEnd != null && i === prevEnd % N) sc += 1.5 * (1 - ch); // plain continuation
+    if (grounding) {
+      if (i % SPB === pos % SPB) sc += 0.8 * grounding;
+      if (prevEnd != null && i === prevEnd % N) sc += grounding;
+      // Preserve the Amen's backbeat, including its late beat-four snare.
+      for (let k = 0; k < len; k++) {
+        const beat = (pos + k) % SPB;
+        if (slices[(i + k) % N].hits.snare) {
+          sc += grounding * (beat === 4 ? 1.3 : beat === 12 || beat === 14 ? 0.6 : -1.15);
+        }
+      }
+    }
     if (i + len > N) sc -= 2; // avoid wrapping past the end
     if (accent) sc += isAccent(i) ? 3 : -1; // odd groupings: start each chunk on a hit so the grouping is audible
+    // and keep the beat: a chunk whose beats would fall on the ring between hits (a slice with nothing struck) loses
+    // the pulse, so each such beat counts against it
+    for (let k = (4 - (pos % 4)) % 4; k < len; k += 4) if (slices[(i + k) % N].role === '.') sc -= 1.5;
     sc += r() * (0.8 + 3 * ch);
     if (sc > bestScore) {
       bestScore = sc;
@@ -71,14 +85,14 @@ function pickBy(r, score, avoid) {
 }
 const hatScore = i => roleScore(i, 'h') + (tailOK(i) ? 1 : -1);
 /* ornaments: phrase-end rolls, scattered rolls, reverses, half-speed drags, gaps. How often each one happens comes from
-   the style blend (MIX, see ideas.js), scaled by CHAOS: at CHAOS 50% a style's own value is used as it is. The ALLOW
+   the style blend (MIX, see ideas.js), scaled by the amount of scramble. The ALLOW
    toggles still switch each kind off. */
 function ornament(R, p, genes, grooves) {
   // each kind (and each bar of scattered rolls) on its own stream, so one starting to fire doesn't move the others
   let r = R('orn:end');
-  const ch = S.chaos,
+  const scale = (0.7 + 0.6 * S.chaos) * (1 - 0.9 * S.restraint),
     o = [],
-    amt = v => Math.min(1, v * (0.7 + 0.6 * ch));
+    amt = v => Math.min(1, v * scale);
   const ends = [SPB * 2 - 4, SPB * 4 - 4];
   if (chance(r, amt(MIX.rollEnd))) {
     // snare roll / retrigger at the end of the phrase
@@ -174,17 +188,18 @@ function score(p, skipLast, beats = [4, 12]) {
    in each bar, ornaments), all derived from the seed. Moving the style puck morphs a card, and returning to the same
    mix restores its pattern. */
 const stream = (seed, tag) => mulberry((seed ^ hashStr(tag)) >>> 0);
-function generate(seed, introSteps = S.introSteps) {
+function generate(seed) {
   MIX = mixStyles();
   const R = tag => stream(seed, tag),
-    genes = { seed };
+    genes = { seed },
+    grounding = (styleShare('sJungle') + 0.65 * styleShare('sFunk')) * Math.min(1, 2 * (1 - UI.scramble));
   let best = null;
   for (let t = 0; t < 6; t++) {
     // a few bases, keep the one with the most solid backbeat (looser as chaos rises). Judged on beat 2 and the
     // downbeat only: ideas shift beat 4 on purpose
     const Rc = tag => R('cand' + t + ':' + tag), // each bar of each candidate cut on its own stream
       g = { ...genes },
-      p = chopBase(Rc, g);
+      p = chopBase(Rc, g, grounding);
     const sc = score(p, false, [4]) + Rc('score')() * S.chaos * 6;
     if (!best || sc > best.sc) best = { p, g, sc };
   }
@@ -192,7 +207,6 @@ function generate(seed, introSteps = S.introSteps) {
     grooves = Array.from({ length: BARS }, (_, b) => grooveForBar(R, b)),
     p = ornament(R, applyIdeas(R, best.p, g), g, grooves);
   finishGroove(R, p, g, grooves);
-  if (introSteps) p.splice(0, introSteps, ...run(0, introSteps));
   return { steps: clean(p), genes: g };
 }
 
@@ -200,6 +214,10 @@ function generate(seed, introSteps = S.introSteps) {
 function generateBatch(batch, count, kept = []) {
   if (!count) return [];
   const mix = mixStyles();
+  // Batch coverage follows the same probabilities as each generated pattern.
+  for (const idea of IDEAS) {
+    if (Object.hasOwn(IDEA_SAY, idea.id)) mix[idea.id] = moveAmount(idea, mix[idea.id]);
+  }
   // Rollers restores the beat-four snare, so it can erase the early-snare move.
   mix.snfwd *= 1 - styleShare('sRoller');
   const moves = Object.keys(IDEA_SAY).filter(id => mix[id] >= 0.15);
@@ -268,7 +286,7 @@ function regenSel(p, ix, tries = 16) {
   };
   let best = null;
   const cands = [];
-  for (let t = 0; t < tries; t++) cands.push(generate((Math.random() * 2 ** 32) >>> 0, 0).steps);
+  for (let t = 0; t < tries; t++) cands.push(generate((Math.random() * 2 ** 32) >>> 0).steps);
   for (const c of cands) {
     // a half-speed drag only makes sense whole: skip candidates that would cut one in two
     if (ix.some(i => c[i].h && ((c[i - 1]?.h && !sel.has(i - 1)) || (c[i + 1]?.h && !sel.has(i + 1)))))

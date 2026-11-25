@@ -11,10 +11,8 @@ const ARC = v => {
   return `M${x0} ${y0}A${r} ${r} 0 ${a - a0 > 180 ? 1 : 0} 1 ${x1} ${y1}`;
 };
 const fmtK = {
-  src: v => v | 0,
   out: v => (+v).toFixed(v % 1 ? 1 : 0),
-  chaos: v => Math.round(v * 100) + '%',
-  lockN: v => v | 0,
+  scramble: v => Math.round(v * 100) + '%',
   res: v => (+v).toFixed(1),
   swing: v => (v > 50 ? (v | 0) + '%' : 'OFF'),
   comp: v => Math.round(v * 100) + '%',
@@ -22,22 +20,11 @@ const fmtK = {
   vol: v => Math.round(v * 100) + '%',
 };
 const onControlChange = {
-  src: () => {
-    if (buf) {
-      stop();
-      analyze();
-      newBatch(false);
-    }
-  },
   vol: v => outG.gain.setTargetAtTime(v, ctx.currentTime, 0.02),
   res: () => applyFilter(),
   comp: () => applyFx(),
   verb: () => applyFx(),
-  chaos: refreshGeneratedCards,
-  keepIntro: refreshGeneratedCards,
-  lockN: () => {
-    if (UI.keepIntro) refreshGeneratedCards();
-  },
+  scramble: refreshGeneratedCards,
   retrig: refreshGeneratedCards,
   pitch: refreshGeneratedCards,
   rev: refreshGeneratedCards,
@@ -45,11 +32,9 @@ const onControlChange = {
   gap: refreshGeneratedCards,
 };
 const KTIP = {
-  src: 'SOURCE BPM — the tempo of the loaded break. Change it only if you drop in a different break; it re-slices and makes a new batch.',
   out: 'BPM — playback and export tempo. Changes live while a pattern plays.',
-  chaos:
-    'CHAOS — how far patterns stray. Low: chunks keep their place in the beat, runs carry on, the backbeat stays strict. High: freer jumps, more fills and ornaments, looser backbeat. The STYLES knobs set what kind of pattern; CHAOS sets how loosely it is played.',
-  lockN: 'STEPS — how many opening 16ths KEEP INTRO takes from the source break (8 = two beats).',
+  scramble:
+    'SCRAMBLE — turn down for longer runs and fewer fills and effects. Turn up for freer jumps. 50% is the default for each style.',
   res: 'RES — filter resonance: the peak at the cutoff. Higher is more squelchy.',
   vol: 'VOL — output level (live playback only).',
   swing:
@@ -72,7 +57,8 @@ function setupKnob(el) {
     max = +el.dataset.max,
     st = +el.dataset.step,
     def = +el.dataset.def;
-  el.innerHTML = `<svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="17" fill="#202026" stroke="#2f2f37" stroke-width="4"/><path class="a" fill="none" stroke="var(--acc)" stroke-width="4" stroke-linecap="round"/><line class="n" x1="22" y1="22" x2="22" y2="9" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg><span class="v"></span><span class="l">${el.dataset.label}</span>`;
+  // technical gauge: a thin 270° track, the value as an ink arc (orange on the hero BPM knob) and a short needle
+  el.innerHTML = `<svg viewBox="0 0 44 44"><path d="${ARC(1)}" fill="none" stroke="var(--line)" stroke-width="3"/><path class="a" fill="none" stroke="${el.classList.contains('hero') ? 'var(--acc)' : 'var(--fg)'}" stroke-width="3"/><line class="n" x1="22" y1="22" x2="22" y2="11" stroke="var(--fg)" stroke-width="2"/></svg><span class="v"></span><span class="l">${el.dataset.label}</span>`;
   const draw = () => {
     const v = (UI[k] - min) / (max - min);
     el.querySelector('.a').setAttribute('d', v > 0.001 ? ARC(v) : '');
@@ -126,7 +112,7 @@ function setupKnob(el) {
     const v = el.querySelector('.v'),
       inp = document.createElement('input');
     inp.className = 'kin';
-    inp.value = UI[k];
+    inp.value = k === 'scramble' ? fmtK.scramble(UI[k]) : UI[k];
     v.replaceWith(inp);
     inp.focus();
     inp.select();
@@ -137,7 +123,8 @@ function setupKnob(el) {
       inp.replaceWith(v);
       if (ok) {
         const t = inp.value.trim();
-        set(t === '' ? def : +t || UI[k], true);
+        const n = k === 'scramble' ? Number(t.replace(/%$/, '')) / 100 : Number(t);
+        set(t === '' ? def : Number.isFinite(n) ? n : UI[k], true);
       }
       draw();
     };
@@ -171,16 +158,13 @@ document.querySelectorAll('.seg[data-k]').forEach(seg => {
   draw();
 });
 function applyView() {
-  document.body.classList.toggle('posmode', UI.colors === 'pos');
   document.body.classList.toggle('nokey', !UI.keyShow);
 }
 applyView();
-const syncDeps = () => $('.knob[data-k=lockN]').classList.toggle('off', !UI.keepIntro);
 document.querySelectorAll('.tog').forEach(b => {
   const k = b.dataset.k,
     draw = () => {
       b.classList.toggle('on', !!UI[k]);
-      syncDeps();
     };
   b.onclick = () => {
     UI[k] = !UI[k];
@@ -315,3 +299,6 @@ function applyFilter() {
   applyFilter();
   applyFx();
 })();
+/* the dock (selection strip + playback row) changes height as the strip shows or the row wraps: keep the page's
+   bottom padding matched, so the last cards always scroll clear of it */
+new ResizeObserver(() => (document.body.style.paddingBottom = $('#dock').offsetHeight + 12 + 'px')).observe($('#dock'));

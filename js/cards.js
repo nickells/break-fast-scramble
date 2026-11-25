@@ -322,7 +322,7 @@ function renderCard(card, { reuseCells = false } = {}) {
         label = e.h && halfLabelClass(steps, i);
       const className =
         'cell ' +
-        (e.s < 0 ? 'rest' : slices[e.s % N].role) +
+        (e.s < 0 ? 'rest' : '') +
         (voice.r ? ' rev' : '') +
         (e.x > 1 ? ' x' + e.x : '') +
         (e.p > 0 ? ' pu' : e.p < 0 ? ' pd' : '') +
@@ -334,13 +334,14 @@ function renderCard(card, { reuseCells = false } = {}) {
         (joinRight ? ' joinR' : '') +
         (joinRight && steps[i + 1].hc && voice.r ? ' rev-joinR' : '');
       const title =
-        (e.s < 0 ? 'rest' : `slice ${e.s}`) +
+        (e.s < 0 ? 'rest' : `slice ${e.s} · ${hitsName(slices[e.s % N].hits)}`) +
         (e.x > 1
           ? ` · retrig ×${e.x} (${RT_NAME[e.x] || e.x + ' hits per 16th'}, ${Math.round(
               (60 / S.out / 4 / e.x) * 1000,
             )} ms each)`
           : '') +
-        (voice.r ? (e.h ? ' · reversed half-speed run' : ' · reversed') : '') +
+        (e.h ? ' · half speed' : '') +
+        (voice.r ? ' · reversed' : '') +
         (e.p ? ` · ${e.p > 0 ? '+' : ''}${e.p} st` : '') +
         (voice.v ? ` · ${voice.v > 0 ? '+' : ''}${voice.v} dB` : '') +
         ' · ' +

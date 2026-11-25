@@ -151,7 +151,7 @@ const chunkWord = c => {
   const t = chunkTarget(c);
   return t >= 11 ? 'BARS' : t >= 5.5 ? 'HALF' : t >= 2.8 ? 'BEATS' : t >= 1.4 ? '8THS' : '16THS';
 };
-function chopBar(r, c, prevBar, genes) {
+function chopBar(r, c, prevBar, genes, grounding) {
   const T = chunkTarget(c),
     lens = [];
   for (let left = SPB; left > 0; ) {
@@ -178,7 +178,7 @@ function chopBar(r, c, prevBar, genes) {
           : Math.floor(r() * nBars()) * SPB;
     else if (last != null && len === lastLen && len >= 2 && chance(r, 0.6 - 0.4 * S.chaos))
       start = last; // the same chunk again: 3-3 / 6-6 is heard as "that again"
-    else start = pickCell(r, len, pos, prevEnd, len >= 3 && len % 4 !== 0); // odd sizes start on a hit, so you hear the grouping
+    else start = pickCell(r, len, pos, prevEnd, len >= 3 && len % 4 !== 0, grounding); // odd sizes start on a hit, so you hear the grouping
     out.push(...run(start, len));
     prevEnd = start + len;
     last = start;
@@ -188,14 +188,16 @@ function chopBar(r, c, prevBar, genes) {
   genes.grp.push(lens.join('+'));
   return out;
 }
-function chopBase(Rc, genes) {
-  const c = MIX.cut;
+function chopBase(Rc, genes, grounding) {
+  const restraint = S.restraint,
+    c = (MIX.cut - 0.13 * grounding) * (1 - 0.4 * restraint),
+    fill = Math.min(1, c + 0.2 * (1 - 0.75 * restraint));
   genes.grp = [];
   genes.cut = chunkWord(c).toLowerCase();
-  const b0 = chopBar(Rc('b0'), c, null, genes),
-    b1 = chopBar(Rc('b1'), c, b0, genes),
-    b2 = chopBar(Rc('b2'), c, b1, genes),
-    b3 = chopBar(Rc('b3'), Math.min(1, c + 0.2), b2, genes);
+  const b0 = chopBar(Rc('b0'), c, null, genes, grounding),
+    b1 = chopBar(Rc('b1'), c, b0, genes, grounding),
+    b2 = chopBar(Rc('b2'), c, b1, genes, grounding),
+    b3 = chopBar(Rc('b3'), fill, b2, genes, grounding);
   return [...b0, ...b1, ...b2, ...b3];
 }
 
@@ -205,7 +207,7 @@ function hatVoices(r) {
     b = pickBy(r, i => hatScore(i) + 0.5 * (slices[i].zhi || 0), new Set([a]));
   return [a, b];
 }
-// a hit on `pos` that sounds out into its own tail on pos+1 (each half only if it's past the START LOCK steps)
+// a hit on `pos` that sounds out into its own tail on pos+1 (each half only if it's past the bar's locked steps)
 function pair(bar, pos, s, lo) {
   if (pos >= lo) bar[pos] = ev(s);
   if (pos + 1 >= lo) bar[pos + 1] = ev(s + 1);
@@ -266,7 +268,7 @@ const IDEAS = [
         pair(bar, pos, s, lo);
         n++;
       }
-      cx.smooth[b] = n / Math.max(1, open); // share of the 8ths it could touch (START LOCK steps don't count)
+      cx.smooth[b] = n / Math.max(1, open); // share of the 8ths it could touch (locked steps don't count)
       return n ? `smooth ${n}/8` : null;
     },
   },
@@ -292,7 +294,26 @@ const IDEAS = [
     },
   },
   {
-    id: 'liquidBackbeat', stage: 'feel', amount: liquid => 0.55 * liquid,
+    id: 'liquidOpening', stage: 'feel', amount: liquid => 0.65 * liquid,
+    apply(r, bar, lo) {
+      // Give a stock six-step opening one fresh hit-and-tail pair.
+      const start = bar[0].s;
+      if (lo || !bar.slice(0, 6).every((e, i) => e.s === start + i)) return null;
+      const pos = 2 * Math.floor(r() * 3),
+        before = bar[pos - 1]?.s,
+        after = bar[pos + 2].s;
+      const options = slices.filter(({ i, role }) => {
+        const fits = pos === 0 ? role === 'K' : pos === 4 ? role === 'S' : role === 'K' || role === 'h';
+        return fits && slices[i + 1]?.role === '.' &&
+          i !== bar[pos].s && i - 1 !== before && i + 2 !== after;
+      });
+      if (!options.length) return null;
+      pair(bar, pos, options[Math.floor(r() * options.length)].i, lo);
+      return 'opening cut';
+    },
+  },
+  {
+    id: 'liquidBackbeat', stage: 'feel', amount: liquid => 0.28 * liquid,
     apply(r, bar) {
       if (!moveSecondSnare(bar, 10)) return null;
       if (chance(r, 0.7)) {
@@ -428,6 +449,9 @@ STYLES.forEach(s => {
 const styleMixMoved = setStylePosition(...stylePosition());
 saveUI();
 
+const moveAmount = (idea, amount) =>
+  idea.id === 'echo6' || idea.group === 'fill' ? amount * (1 - 0.65 * S.restraint) : amount;
+
 /* every idea after the base, in order. Each idea in each bar has its own random stream R(id:bar), and an `each`
    idea one per spot, R(id:bar:spot); a SHAPE idea has one per pattern. A bar that LOOP or CALL restated from bar 1
    rolls on bar 1's streams, so it stays bar 1. */
@@ -448,7 +472,7 @@ function applyIdeas(R, p, genes) {
         if (m.group && (groups[m.group] || 0) >= cap) continue;
         const key = m.id + ':' + src[b],
           rm = R(key);
-        const amount = m.amount?.(liquid) ?? MIX[m.id];
+        const amount = moveAmount(m, m.amount?.(liquid) ?? MIX[m.id]);
         if (!m.each && rm() >= amount) continue;
         cx.sub = tag => R(key + ':' + tag);
         const lab = m.apply(rm, bar, bar.lo || 0, bars[b - 1] || bar, bars[0], b, cx);
@@ -489,6 +513,16 @@ function grooveForBar(R, bar) {
   if (feel < MIX.ht + styleShare('sRoller')) return 'rollers';
 }
 
+// Keep the ring of a softened snare at the same level until the next strike.
+function tuckSnare(p, i) {
+  const e = p[i], tail = p[i + 1];
+  e.v = Math.min(e.v || 0, -13);
+  if (tail?.s === e.s + 1 && slices[tail.s].role === '.' && !e.h && !tail.h &&
+    (e.x || 1) === 1 && (tail.x || 1) === 1 && !e.r && !tail.r && e.p === tail.p) {
+    tail.v = Math.min(tail.v || 0, e.v);
+  }
+}
+
 // Set the last accent and level decisions after ornaments have shaped the bar.
 function finishGroove(R, p, genes, grooves) {
   const funk = styleShare('sFunk');
@@ -511,7 +545,7 @@ function finishGroove(R, p, genes, grooves) {
         if (i === snare) continue;
         const e = p[i];
         const role = slices[e.s]?.role;
-        if (role === 'S') e.v = Math.min(e.v || 0, -13);
+        if (role === 'S') tuckSnare(p, i);
         if (role === 'K' && i > snare && i <= snare + 2) e.v = Math.min(e.v || 0, -5);
       }
       genes.grp.push('halftime (bar ' + (b + 1) + ')');
@@ -537,7 +571,7 @@ function finishGroove(R, p, genes, grooves) {
     if (!starts.length) continue;
     const at = starts[Math.floor(rs() * starts.length)];
     p[at] = { ...ev(voice(rs, 'h')), v: -7 - Math.floor(rs() * 4) };
-    p[at + 1] = { ...ev(voice(rs, 'S')), v: -11 - Math.floor(rs() * 5) };
+    p[at + 1] = { ...ev(voice(rs, 'g')), v: -5 - Math.floor(rs() * 5) };
     genes.grp.push('hat–ghost shuffle (bar ' + (b + 1) + ')');
   }
 }
