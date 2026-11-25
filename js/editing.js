@@ -8,7 +8,7 @@ const ED = {
   card: null, mode: null, suppress: false, eatClick: false, undo: [], tgt: null, pendingLands: 0,
 };
 const rc = i => [Math.floor(i / SPB), i % SPB];
-const plainE = e => ({ s: e.s, r: !!e.r, h: !!e.h, x: e.x || 1, p: e.p || 0, ...(e.v ? { v: e.v } : {}) });
+const plainE = e => ({ s: e.s, r: !!e.r, h: !!e.h, x: e.x || 1, p: e.p || 0 });
 function setupEdit(card) {}
 function clearSel() {
   ED.anchor = null;
@@ -729,11 +729,12 @@ function editSel(fn) {
   const c = ED.card;
   if (!c?.sel?.size || c.ro) return;
   const old = c.steps.map(plainE);
-  ED.undo.push([{ card: c, steps: old, sel: new Set(c.sel), edited: !!c.edited }]);
-  if (ED.undo.length > 50) ED.undo.shift();
   const p = old.map(x => ({ ...x })),
     idx = [...c.sel].sort((a, b) => a - b),
     selection = fn(p, idx, old);
+  if (selection === false) return;
+  ED.undo.push([{ card: c, steps: old, sel: new Set(c.sel), edited: !!c.edited }]);
+  if (ED.undo.length > 50) ED.undo.shift();
   if (selection) {
     c.sel = new Set(selection);
     ED.anchor = { card: c, i: selection[0] };
@@ -748,16 +749,12 @@ function editSel(fn) {
 const selectedVoices = (steps, indices) => [...new Set(indices
   .filter(i => steps[i].s >= 0)
   .map(i => voiceStart(steps, i)))];
-function adjustLevel(steps, indices, delta) {
-  annotateHalf(steps);
-  for (const i of selectedVoices(steps, indices)) {
-    const level = steps[i].v || 0;
-    if (!delta) delete steps[i].v;
-    else if (delta > 0 && level < 12) steps[i].v = Math.min(12, level + delta);
-    else if (delta < 0 && level > -60) steps[i].v = Math.max(-60, level + delta);
-  }
-}
 const OPS = {
+  tops: (p, ix, _old, wholeCard) => {
+    const card = ED.card;
+    const seed = card.genes?.seed ?? hashStr(card.orig);
+    if (!swapKickSlices(tag => stream(seed, tag), p, wholeCard ? undefined : new Set(ix))) return false;
+  },
   regen: (p, ix) => {
     const q = regenSel(p, ix);
     ix.forEach(i => (p[i] = q[i]));
@@ -777,14 +774,11 @@ const OPS = {
     ix.forEach(i => {
       if (p[i].s >= 0) p[i].p = Math.max(-24, (p[i].p || 0) - (big ? 12 : 1));
     }),
-  vup: (p, ix, o, big) => adjustLevel(p, ix, big ? 6 : 1),
-  vdn: (p, ix, o, big) => adjustLevel(p, ix, big ? -6 : -1),
-  vreset: (p, ix) => adjustLevel(p, ix, 0),
   half: (p, ix) => {
     const live = ix.filter(i => p[i].s >= 0);
     if (!live.length) return;
     annotateHalf(p);
-    const withVoice = (s, voice, h) => ({ ...ev(s), h, r: !!voice.r, p: voice.p || 0, ...(voice.v ? { v: voice.v } : {}) });
+    const withVoice = (s, voice, h) => ({ ...ev(s), h, r: !!voice.r, p: voice.p || 0 });
     if (live.every(i => p[i].h)) {
       for (const i of selectedVoices(p, live)) {
         const voice = p[i];
@@ -957,8 +951,7 @@ function placeBar(force) {
     st = indices.map(i => c.steps[i]).filter(e => e.s >= 0),
     voices = selectedVoices(c.steps, indices).map(i => c.steps[i]),
     ps = [...new Set(st.map(e => e.p || 0))],
-    xs = [...new Set(st.map(e => e.x || 1))],
-    levels = [...new Set(voices.map(e => e.v || 0))];
+    xs = [...new Set(st.map(e => e.x || 1))];
   const inp = bar.querySelector('.sb-in');
   if (document.activeElement !== inp) {
     inp.value = st.length === indices.length
@@ -968,13 +961,6 @@ function placeBar(force) {
     inp.classList.remove('bad');
   }
   bar.querySelector('.sb-p').textContent = ps.length === 1 ? (ps[0] > 0 ? '+' : '') + ps[0] + ' st' : ps.length ? '~ st' : '— st';
-  const gain = bar.querySelector('[data-op=vreset]');
-  const levelText = levels.length === 1 ? `${levels[0] > 0 ? '+' : ''}${levels[0]} dB` : levels.length ? '~ dB' : '— dB';
-  gain.textContent = levelText;
-  gain.setAttribute('aria-label', `Reset gain to 0 dB (${levels.length > 1 ? 'mixed levels' : levelText})`);
-  gain.disabled = levels.every(v => v === 0);
-  bar.querySelector('[data-op=vdn]').disabled = levels.every(v => v <= -60);
-  bar.querySelector('[data-op=vup]').disabled = levels.every(v => v >= 12);
   const indicate = (op, on) => {
     const button = bar.querySelector('[data-op=' + op + ']');
     button.classList.toggle('on', on);

@@ -14,7 +14,8 @@ function swAt(i, sd) {
     w = x < u ? (x * (u + off)) / u : u + off + ((x - u) * (u - off)) / u;
   return w - x;
 }
-function schedStep(c, dest, e, t, dur, raw, i, waveHits) {
+const isTopLoop = steps => steps.every(e => !slices[e.s]?.kickAudio);
+function schedStep(c, dest, e, t, dur, raw, i, waveHits, topLoop = false) {
   if (!e || e.s < 0 || e.hc) return; // half-speed continuation: already sounding
   const half = !!e.hlen,
     n = half ? e.hlen : 1;
@@ -31,12 +32,16 @@ function schedStep(c, dest, e, t, dur, raw, i, waveHits) {
     sub = dur / x,
     slice = e.s % N,
     start = slices[slice].start,
-    next = slices[slice + (half ? Math.ceil(n / 2) : 1)];
+    nextIndex = slice + (half ? Math.ceil(n / 2) : 1),
+    next = slices[nextIndex];
   // CHOP and swung REPITCH can leave space between hits. Keep that space clear of source bleed.
   const swung = i != null && UI.swing > 50;
-  const end = !raw && (S.mode === 'chop' || swung)
+  let end = !raw && (S.mode === 'chop' || swung)
     ? (next?.start ?? buf.duration)
     : Infinity;
+  // A pitched chop can read past its slice. Keep it from reaching the next kick in a top loop.
+  if (topLoop && end === Infinity)
+    end = slices.find(s => s.i >= nextIndex && s.kickAudio)?.start ?? buf.duration;
   const rate =
     Math.pow(2, (e.p || 0) / 12) *
     (!raw && S.mode === 'repitch' ? S.out / S.src : 1) *
@@ -46,7 +51,7 @@ function schedStep(c, dest, e, t, dur, raw, i, waveHits) {
   // Fill part of a swing gap with the recorded ring, fading across the borrowed
   // audio. A snapped boundary might be a transient even if the score has no hit.
   const borrow = !raw && swingLength > 0 && !half && !e.r && x === 1 && sub - normalTime > 0.004 &&
-    next?.role === '.' && !next.snapped;
+    next?.role === '.' && !next.snapped && !(topLoop && next.kickAudio);
   const need = borrow
     ? Math.min(sub * rate, normalNeed + 0.04 * rate, (slices[slice + 2]?.start ?? buf.duration) - start)
     : normalNeed;
@@ -63,8 +68,8 @@ function schedStep(c, dest, e, t, dur, raw, i, waveHits) {
     src.playbackRate.value = rate;
     src.connect(g);
     g.connect(dest);
-    // level: the step's own dB, and rolls rise into what follows (deeper start the longer the roll, up to −9 dB)
-    let db = e.v || 0;
+    // Rolls rise into what follows, with up to 9 dB of lift.
+    let db = 0;
     if (x > 1) {
       const n = e.rn || x,
         j = (e.rj || 0) + k;
@@ -273,7 +278,7 @@ function tick() {
     const card = P.card,
       i = P.pos;
     if (i % SPB === 0) annotateHalf(card.steps);
-    schedStep(ctx, master, card.steps[i], P.next, sd, false, i, P.waveHits);
+    schedStep(ctx, master, card.steps[i], P.next, sd, false, i, P.waveHits, isTopLoop(card.steps));
     const at = (P.next + swAt(i, sd) - ctx.currentTime) * 1000;
     setTimeout(() => {
       if (P !== PP) return;
@@ -297,8 +302,9 @@ async function render(steps, loops = 1) {
   og.gain.value = 0.85;
   og.connect(oc.destination);
   annotateHalf(steps);
+  const topLoop = isTopLoop(steps);
   for (let l = 0; l < loops; l++)
-    for (let i = 0; i < LEN; i++) schedStep(oc, og, steps[i], (l * LEN + i) * sd, sd, false, i);
+    for (let i = 0; i < LEN; i++) schedStep(oc, og, steps[i], (l * LEN + i) * sd, sd, false, i, undefined, topLoop);
   return oc.startRendering();
 }
 function wav(ab) {

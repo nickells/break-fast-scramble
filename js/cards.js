@@ -343,7 +343,6 @@ function renderCard(card, { reuseCells = false } = {}) {
         (e.h ? ' · half speed' : '') +
         (voice.r ? ' · reversed' : '') +
         (e.p ? ` · ${e.p > 0 ? '+' : ''}${e.p} st` : '') +
-        (voice.v ? ` · ${voice.v > 0 ? '+' : ''}${voice.v} dB` : '') +
         ' · ' +
         (cont ? 'continues' : 'cut');
       // Include the joins and half-speed label, which can change with neighboring steps.
@@ -363,7 +362,6 @@ function renderCard(card, { reuseCells = false } = {}) {
         drawHalfLabel(c, steps, i);
         if (voice.r) c.insertAdjacentHTML('beforeend', '<span class="reverse-run" aria-hidden="true"></span>');
       }
-      if (voice.v) c.style.setProperty('--lv', Math.min(1.25, Math.max(0.4, 1 + voice.v / 24))); // quieter steps read darker
       if (e.x > 1) c.style.backgroundImage = rtBg(e.x);
       if (reuseCells) card.cells[i].replaceWith(c);
       else row.appendChild(c);

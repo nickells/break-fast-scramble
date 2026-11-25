@@ -177,7 +177,7 @@
       /* the hands' part. Every snare in the amen lands with the ride. One played heavy, on a quarter-note beat of the
          pattern or turned up, shows as the snare alone (his snare pose: the snare is what you hear); elsewhere, and
          turned down, as the double, both drums at once */
-      strong = i % 4 === 0 || (e.v || 0) > 0,
+      strong = i % 4 === 0,
       p = {
         kick: h.kick,
         hands: h.snare ? (h.ride && !strong ? 'SR' : 'S') : h.ghost ? 'g' : h.crash ? 'crash' : h.ride ? 'h' : null,

@@ -6,7 +6,7 @@
    Ride on every 8th except bar 4 step 10, a crash; kicks 0 2 10 11 (bar 3: 0 2 10; bar 4: 2 3 10); snares 4 and 12
    (bars 3-4: 4 and 14, the 4th beat delayed); ghosts, the quiet snares, 7 9 (bars 1-2 also 15; bar 4 also 1).
    Snares, ride and crash after Ethan Hein's step-by-step build of the break; kicks checked against the audio (the 16
-   slices with the most low end are these plus two kick tails, and nothing on the 8th offbeats of beats 2 and 4). */
+   slices with the most low end are these plus kick tails, and nothing on the 8th offbeats of beats 2 and 4). */
 const AMEN_NOTES = {
   kick: [[0, 2, 10, 11], [0, 2, 10, 11], [0, 2, 10], [2, 3, 10]],
   snare: [[4, 12], [4, 12], [4, 14], [4, 14]],
@@ -143,6 +143,8 @@ function analyze() {
   for (const s of slices) {
     s.hits = amenHits(s.i);
     s.kick = s.hits.kick ? 1.2 : -0.8;
+    // In the first three bars the 16th after the opening kick still carries its low end.
+    s.kickAudio = s.hits.kick || s.i === 1 || s.i === 17 || s.i === 33;
     s.snare = s.hits.snare ? 1.2 : s.hits.ghost ? 0.2 : -0.8;
     s.role = mainVoice(s.hits);
   }

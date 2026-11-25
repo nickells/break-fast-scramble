@@ -13,14 +13,17 @@
   <div id="ideas"></div>
   <div class="generation-controls">
     <h1>BREAK/FAST/SCRAMBLE<span class="h1-cur">_</span></h1>
-    <canvas id="drummer" role="img" aria-label="Drummer: plays along with the pattern"></canvas>
+    <figure class="drummer-panel">
+      <canvas id="drummer" role="img" aria-label="Drummer: plays along with the pattern"></canvas>
+      <figcaption><a href="https://www.youtube.com/shorts/ekpSB0B-AKo" target="_blank" rel="noopener" title="breakcore in a nutshell" aria-label="Watch breakcore in a nutshell by @PoorDesign on YouTube">@PoorDesign ↗</a></figcaption>
+    </figure>
     <div id="wave" role="img" aria-label="Source break waveform showing the current playback position"><canvas></canvas><span class="wave-head" hidden></span></div>
     <div class="generation-mod"><span class="cap">PATTERN</span><div class="row">
       <div class="knob" data-k="scramble" data-min="0" data-max="1" data-step="0.01" data-def="0.5" data-label="SCRAMBLE"></div>
       <button id="gen" data-tip="REROLL — replace the current batch using the same settings. Pinned patterns and the playing pattern stay in place.">REROLL</button>
     </div></div>
     <div class="generation-mod"><span class="cap">ALLOW</span><div class="row"><div class="togs">
-      <button class="tog" data-k="retrig" data-tip="RETRIG — stutter rolls: a slice retriggered inside one 16th, usually a snare at a phrase end. ×2 = 32nds, ×3 = 16th triplets, ×4 = 64ths. Shown as a cell split into that many parts.">RETRIG</button><button class="tog" data-k="pitch" data-tip="PITCH — rolls that ramp up in pitch, and half-time drags pitched down.">PITCH</button><button class="tog" data-k="rev" data-tip="REVERSE — the odd slice played backwards, usually just before a downbeat.">REVERSE</button><button class="tog" data-k="half" data-tip="HALF — half-speed drag: a segment of the break plays at half speed, so it lasts twice as long and drops an octave, like a slowing record. Lands at the end of a bar. With REVERSE also on, about 1 in 3 plays backwards: a rewind swell into the next downbeat.">HALF</button><button class="tog" data-k="gap" data-tip="GAPS — drops an occasional off-beat slice to silence.">GAPS</button>
+      <button class="tog" data-k="kicks" data-tip="KICKS — turn off to swap kick slices for cymbals and generate top loops.">KICKS</button><button class="tog" data-k="retrig" data-tip="RETRIG — stutter rolls: a slice retriggered inside one 16th, usually a snare at a phrase end. ×2 = 32nds, ×3 = 16th triplets, ×4 = 64ths. Shown as a cell split into that many parts.">RETRIG</button><button class="tog" data-k="pitch" data-tip="PITCH — rolls that ramp up in pitch, and half-time drags pitched down.">PITCH</button><button class="tog" data-k="rev" data-tip="REVERSE — the odd slice played backwards, usually just before a downbeat.">REVERSE</button><button class="tog" data-k="half" data-tip="HALF — half-speed drag: a segment of the break plays at half speed, so it lasts twice as long and drops an octave, like a slowing record. Lands at the end of a bar. With REVERSE also on, about 1 in 3 plays backwards: a rewind swell into the next downbeat.">HALF</button><button class="tog" data-k="gap" data-tip="GAPS — drops an occasional off-beat slice to silence.">GAPS</button>
     </div></div></div>
     <div class="generation-mod"><span class="cap">EDIT</span><div class="row"><div class="togs">
       <button class="tog" data-k="live" data-tip="LIVE — while you drag a selection, the cards already show (and play) the swap or clone at the spot you're over. Move away and they go back; let go to keep it.">LIVE</button>
@@ -54,14 +57,6 @@
       <button type="button" data-op="pup" title="Pitch up a semitone (⇧ = octave)" aria-label="Raise pitch">+</button>
     </div>
   </div>
-  <div class="sb-section" role="group" aria-labelledby="sb-gain-label">
-    <span id="sb-gain-label" class="sb-label">Gain</span>
-    <div class="sb-grp">
-      <button type="button" data-op="vdn" title="Lower gain by 1 dB (⇧ = 6 dB)" aria-label="Lower gain">−</button>
-      <button type="button" data-op="vreset" class="sb-db" title="Reset gain to 0 dB">0 dB</button>
-      <button type="button" data-op="vup" title="Raise gain by 1 dB (⇧ = 6 dB)" aria-label="Raise gain">+</button>
-    </div>
-  </div>
   <div class="sb-section" role="group" aria-labelledby="sb-playback-label">
     <span id="sb-playback-label" class="sb-label">Playback</span>
     <div class="sb-grp">
@@ -84,6 +79,7 @@
     <span id="sb-actions-label" class="sb-label">Actions</span>
     <div class="sb-grp">
       <button type="button" data-op="regen" title="Regenerate the selection and fit the steps around it (⌘Z undoes)">REROLL</button>
+      <button type="button" data-op="tops" title="Swap kicks in the selection for cymbal slices. Shift-click for the whole pattern. ⌘Z undoes.">TOPS</button>
       <button type="button" data-op="del" title="Clear to rests (Delete)" aria-label="Clear to rests">CLR</button>
     </div>
   </div>
@@ -114,18 +110,18 @@
 </div>
 <div id="tip"></div>
 <script src="amen-data.js"></script>
-<script src="js/core.js"></script>
-<script src="js/analysis.js"></script>
+<script src="js/core.js?v=kicks"></script>
+<script src="js/analysis.js?v=kicks"></script>
 <script src="js/pattern.js"></script>
-<script src="js/generator.js"></script>
+<script src="js/generator.js?v=tops"></script>
 <script src="js/ideas.js"></script>
-<script src="js/playback.js"></script>
+<script src="js/playback.js?v=kicks"></script>
 <script src="js/wave.js"></script>
 <script src="js/drummer.js"></script>
 <script src="js/namer.js"></script>
 <script src="js/cards.js"></script>
-<script src="js/editing.js"></script>
-<script src="js/controls.js"></script>
-<script src="js/main.js"></script>
+<script src="js/editing.js?v=tops"></script>
+<script src="js/controls.js?v=kicks"></script>
+<script src="js/main.js?v=kicks"></script>
 </body>
 </html>

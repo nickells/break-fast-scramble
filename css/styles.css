@@ -483,12 +483,6 @@ main {
   font-variant-numeric: tabular-nums;
   color: var(--fg);
 }
-#selbar .sb-db {
-  min-width: 6ch;
-  padding: 0;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
-}
 #selbar .sb-in {
   height: 24px;
   min-width: 4ch;
@@ -502,12 +496,6 @@ main {
   border-radius: 3px;
   outline: 0;
   text-align: center;
-}
-#selbar .sb-db:disabled {
-  background: transparent;
-  border-color: transparent;
-  color: var(--fg);
-  cursor: default;
 }
 #selbar:not(.vals) .sb-in {
   display: none;
@@ -971,9 +959,30 @@ textarea {
   margin-left: auto;
 }
 /* the drummer plays along, in a box to the left of the waveform; without the sprite the waveform takes the row */
-#drummer {
+.drummer-panel {
   flex: none;
   width: 118px;
+  margin: 0;
+}
+.drummer-panel figcaption {
+  margin-top: 2px;
+  text-align: end;
+  font-size: 8px;
+}
+.drummer-panel a {
+  color: var(--dim);
+  text-underline-offset: 2px;
+}
+.drummer-panel a:hover,
+.drummer-panel a:focus-visible {
+  color: var(--acc);
+}
+.drummer-panel:has(> #drummer[hidden]) {
+  display: none;
+}
+#drummer {
+  display: block;
+  width: 100%;
   height: 92px;
   /* The sprite uses black ink and multiply. Invert it on the complements of paper and line. */
   background: #dfdfda;
@@ -983,13 +992,14 @@ textarea {
 }
 #wave {
   position: relative;
+  align-self: flex-start;
   flex-basis: calc(100% - 118px - 22px);
   height: 92px;
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 3px;
 }
-#drummer[hidden] + #wave {
+.drummer-panel:has(> #drummer[hidden]) + #wave {
   flex-basis: 100%;
 }
 #wave canvas {
@@ -1288,21 +1298,21 @@ body {
   cursor: crosshair;
   touch-action: none;
 }
-.style-hex,
-.style-hex::before {
+.style-polygon,
+.style-polygon::before {
   position: absolute;
   inset: 0;
-  clip-path: polygon(50% 0%, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%);
+  clip-path: var(--style-outline);
 }
-.style-hex {
+.style-polygon {
   background: var(--fg);
 }
-.style-hex::before {
+.style-polygon::before {
   content: '';
   inset: 1px;
   background: var(--paper);
 }
-.style-hex > span {
+.style-polygon > span {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -1385,9 +1395,4 @@ body.nokey #srcmap {
 .card.marking .grid .cell:not(.mk),
 body.marking .card:not(.marking) .grid .cell {
   opacity: 0.22;
-}
-/* Gain: quieter steps fade toward the card colour (on paper, darker would read as louder); boosts keep the full fill.
-   Applied to the fill only, so the selection outline and its gutter bridges stay crisp. */
-.cell[style*='--lv'] {
-  background-color: color-mix(in srgb, var(--step-fill) calc(min(var(--lv), 1) * 100%), var(--panel));
 }
