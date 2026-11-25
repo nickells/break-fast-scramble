@@ -5,7 +5,7 @@
    Drag the selection onto any card: swaps with what's there (same card or another loop). ⌥ while dropping: clone (source untouched).
    Esc / click elsewhere clears.  ⌘Z undoes. */
 const ED = {
-  card: null, mode: null, suppress: false, eatClick: false, undo: [], tgt: null, pendingDrops: 0,
+  card: null, mode: null, suppress: false, eatClick: false, undo: [], tgt: null, pendingLands: 0,
 };
 const rc = i => [Math.floor(i / SPB), i % SPB];
 const plainE = e => ({ s: e.s, r: !!e.r, h: !!e.h, x: e.x || 1, p: e.p || 0, ...(e.v ? { v: e.v } : {}) });
@@ -572,13 +572,13 @@ const edEnd = e => {
       if (clone) A.cells.forEach(c => c.classList.remove('lifted'));
       // 2) then the swap: what was there flies back to where the selection came from
       if (!clone) setTimeout(() => fly(B, T.tg, tgtPos, srcPos, FLY), FLASH - 40);
-      ED.pendingDrops++;
+      ED.pendingLands++;
       setTimeout(
         () => {
           try {
             applyEdit(A, T.src, B, T.tg, clone);
           } finally {
-            ED.pendingDrops--;
+            ED.pendingLands--;
             if (G) {
               G.dead = true;
               G.el.remove();
@@ -591,7 +591,9 @@ const edEnd = e => {
       G.tx = G.home[0];
       G.ty = G.home[1];
       G.ts = 1;
+      ED.pendingLands++;
       G.done = () => {
+        ED.pendingLands--;
         G.el.remove();
         A?.cells.forEach(c => c.classList.remove('lifted'));
       };
@@ -730,11 +732,15 @@ function editSel(fn) {
   ED.undo.push([{ card: c, steps: old, sel: new Set(c.sel), edited: !!c.edited }]);
   if (ED.undo.length > 50) ED.undo.shift();
   const p = old.map(x => ({ ...x })),
-    idx = [...c.sel].sort((a, b) => a - b);
-  fn(p, idx, old);
+    idx = [...c.sel].sort((a, b) => a - b),
+    selection = fn(p, idx, old);
+  if (selection) {
+    c.sel = new Set(selection);
+    ED.anchor = { card: c, i: selection[0] };
+  }
   commitSteps(c, p);
   renderCard(c);
-  idx.forEach(i => c.cells[i].classList.add('landed'));
+  (selection || idx).forEach(i => c.cells[i].classList.add('landed'));
   c.el.classList.add('editing');
   saveCards();
   placeBar(true);
@@ -785,6 +791,14 @@ const OPS = {
         for (let k = 0; k < voice.hlen; k++) p[i + k] = withVoice(voice.s + k, voice, false);
       }
       return;
+    }
+    if (ix.length === 1) {
+      const i = ix[0],
+        start = (i + 1) % SPB === 0 ? i - 1 : i,
+        voice = p[i];
+      p[start] = withVoice(voice.s, voice, true);
+      p[start + 1] = withVoice(voice.s, voice, true);
+      return [start, start + 1];
     }
     // A disjoint selection stretches each span independently.
     for (let a = 0; a < ix.length;) {
@@ -886,15 +900,51 @@ $('#selbar').addEventListener('click', e => {
   const op = OPS[b.dataset.op];
   if (op) editSel((p, ix, o) => op(p, ix, o, e.shiftKey));
 });
-let barKey = '';
+const repeatSelect = $('#sb-repeat');
+repeatSelect.addEventListener('change', () => {
+  const op = OPS['x' + repeatSelect.value];
+  if (op) editSel(op);
+});
+let barKey = '',
+  barLayoutDirty = true;
+function positionBar(bar, card) {
+  const rects = [...card.sel].map(i => card.cells[i].getBoundingClientRect()),
+    x0 = Math.min(...rects.map(r => r.left)),
+    x1 = Math.max(...rects.map(r => r.right)),
+    y0 = Math.min(...rects.map(r => r.top)),
+    y1 = Math.max(...rects.map(r => r.bottom)),
+    edge = 8,
+    gap = 10,
+    bottom = Math.min(innerHeight, $('#dock').getBoundingClientRect().top) - edge;
+  const out = y1 <= edge || y0 >= bottom || x1 <= edge || x0 >= innerWidth - edge;
+  bar.classList.toggle('offscreen', out);
+  if (out) return;
+  const w = bar.offsetWidth,
+    h = bar.offsetHeight,
+    cx = (Math.max(edge, x0) + Math.min(innerWidth - edge, x1)) / 2,
+    left = Math.max(edge, Math.min(innerWidth - w - edge, cx - w / 2)),
+    aboveTop = y0 - h - gap,
+    belowTop = y1 + gap,
+    below = aboveTop < edge && (belowTop + h <= bottom || bottom - y1 > y0 - edge),
+    top = Math.max(edge, Math.min(bottom - h, below ? belowTop : aboveTop));
+  bar.style.left = left + 'px';
+  bar.style.top = top + 'px';
+  bar.style.setProperty('--ax', Math.max(10, Math.min(w - 10, cx - left)) + 'px');
+  bar.classList.toggle('below', below);
+}
 function placeBar(force) {
   const bar = $('#selbar'),
     c = ED.card;
-  // docked above the playback row, so it stays up through drags and marquees instead of blinking
-  // only touch the DOM when something it depends on changed (Safari resets the cursor on needless class/style writes)
-  const hide = !c || c.ro || !c.sel?.size || !cards.includes(c);
+  // Keep the bar hidden until the selection has landed, including non-live swaps.
+  const hide = !c || c.ro || !c.sel?.size || ED.mode || ED.pendingLands || !cards.includes(c);
   const key = hide ? 'hidden' : [c.id, [...c.sel].join('.'), c.str].join('|');
-  if (!force && key === barKey) return;
+  if (!force && key === barKey) {
+    if (!hide && barLayoutDirty) {
+      positionBar(bar, c);
+      barLayoutDirty = false;
+    }
+    return;
+  }
   barKey = key;
   if (hide) {
     bar.classList.remove('show');
@@ -902,7 +952,6 @@ function placeBar(force) {
   }
   bar.classList.toggle('one', c.sel.size === 1); // Show the slice field directly for a single step.
   bar.classList.add('show');
-  bar.querySelector('.sb-where').textContent = selWhere([...c.sel]);
   // reflect the selection's current state
   const indices = [...c.sel],
     st = indices.map(i => c.steps[i]).filter(e => e.s >= 0),
@@ -933,19 +982,16 @@ function placeBar(force) {
   };
   indicate('rev', voices.length > 0 && voices.every(e => e.r));
   indicate('half', st.length > 0 && st.every(e => e.h));
-  [1, 2, 3, 4].forEach(x => indicate('x' + x, xs.length === 1 && xs[0] === x));
+  repeatSelect.value = xs.length === 1 ? String(xs[0]) : xs.length ? 'mixed' : '';
+  repeatSelect.disabled = xs.length === 0;
+  positionBar(bar, c);
+  barLayoutDirty = false;
 }
-/* "B2 · 5–8" for a run inside one bar; otherwise the bars it spans and how many steps */
-function selWhere(ix) {
-  ix = ix.slice().sort((a, b) => a - b);
-  const bars = [...new Set(ix.map(i => Math.floor(i / SPB) + 1))],
-    first = (ix[0] % SPB) + 1,
-    last = (ix[ix.length - 1] % SPB) + 1,
-    run = ix.every((v, k) => !k || v === ix[k - 1] + 1);
-  if (bars.length === 1 && run) return `B${bars[0]} · ${first === last ? first : first + '–' + last}`;
-  const span = bars.length === 1 ? 'B' + bars[0] : `B${bars[0]}–${bars[bars.length - 1]}`;
-  return `${span} · ${ix.length} steps`;
-}
+const invalidateBarLayout = () => { barLayoutDirty = true; };
+addEventListener('scroll', invalidateBarLayout, true);
+addEventListener('resize', invalidateBarLayout);
+const barResize = new ResizeObserver(invalidateBarLayout);
+['#cards', '#dock', '#selbar'].forEach(selector => barResize.observe($(selector)));
 (function barLoop() {
   placeBar();
   requestAnimationFrame(barLoop);
@@ -973,7 +1019,7 @@ document.addEventListener('keydown', e => {
     (e.key === 'Delete' || e.key === 'Backspace') &&
     ED.card?.sel?.size &&
     !ED.card.ro &&
-    !/INPUT|TEXTAREA/.test(e.target.tagName)
+    !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)
   ) {
     // delete → empty space (rests)
     e.preventDefault();

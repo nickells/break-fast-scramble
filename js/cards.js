@@ -340,7 +340,8 @@ function renderCard(card, { reuseCells = false } = {}) {
               (60 / S.out / 4 / e.x) * 1000,
             )} ms each)`
           : '') +
-        (voice.r ? (e.h ? ' · reversed half-speed run' : ' · reversed') : '') +
+        (e.h ? ' · half speed' : '') +
+        (voice.r ? ' · reversed' : '') +
         (e.p ? ` · ${e.p > 0 ? '+' : ''}${e.p} st` : '') +
         (voice.v ? ` · ${voice.v > 0 ? '+' : ''}${voice.v} dB` : '') +
         ' · ' +

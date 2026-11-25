@@ -1,18 +1,23 @@
 'use strict';
 
 /* ---------- header waveform ----------
-   The whole source break with its slice ruler. While a pattern plays, the slices it uses are ink and the rest grey;
-   the slice now sounding is orange, with the playhead at its start. Stopped: every slice is ink.
-   Redrawn only when something it shows changes (checked once per frame, like the selection bar). */
+   The whole source break in the grid's slice colors. While a pattern plays, unused slices are dimmed
+   and the playhead follows the audio through the source. The waveform canvas only redraws when its colors,
+   highlight or dimensions change. */
 (() => {
   const box = $('#wave'),
     cv = box.querySelector('canvas'),
-    g = cv.getContext('2d');
+    g = cv.getContext('2d'),
+    head = box.querySelector('.wave-head'),
+    padX = 10;
   let mono = null,
     monoOf = null,
     peaks = null,
     peaksKey = '',
-    lastKey = '';
+    paletteSource = null,
+    palette = [],
+    lastKey = '',
+    lastPosition = null;
 
   const monoOfBuf = () => {
     if (monoOf === buf) return mono;
@@ -48,19 +53,24 @@
     return (peaks = out);
   };
 
-  // what is playing: the shown pattern and the slice under its playhead, or the ORIGINAL preview
+  // In an overlap, show the newest audible hit. Future hits can already be queued.
   const heard = () => {
-    if (sourcePreview) return { card: null, now: sourcePreview.index >= 0 ? sourcePreview.index : null };
-    if (!P) return { card: null, now: null };
-    const card = P.shownCard || P.card;
-    let i = card.nowI,
-      now = null;
-    if (i != null && card.steps[i]) {
-      while (i > 0 && card.steps[i].hc) i--; // half-speed continuation: still the slice that started it
-      const e = card.steps[i];
-      if (e.s >= 0) now = e.s;
+    const clock = ctx.currentTime,
+      card = P ? P.shownCard || P.card : null;
+    let time = null;
+    if (sourcePreview) time = clock - sourcePreview.startedAt;
+    else if (P) {
+      let active = null;
+      for (const hit of P.waveHits) {
+        if (hit.start <= clock && clock < hit.end && (!active || hit.start >= active.start)) active = hit;
+      }
+      if (active) time = active.offset + (clock - active.start) * active.rate;
     }
-    return { card, now };
+    if (time == null || !buf || !slices.length) return { card, now: null, time: null };
+    time = Math.max(0, Math.min(buf.duration, time));
+    let now = 0;
+    while (now + 1 < slices.length && slices[now + 1].start <= time) now++;
+    return { card, now, time };
   };
   const usedBy = card => {
     const u = new Set();
@@ -84,13 +94,16 @@
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
     if (!buf || !slices.length) return;
+    if (paletteSource !== slices) {
+      palette = slices.map((_, i) => posColor(i));
+      paletteSource = slices;
+    }
     const css = getComputedStyle(document.documentElement),
       ink = css.getPropertyValue('--fg').trim(),
       dim = css.getPropertyValue('--dim').trim(),
       line = css.getPropertyValue('--line').trim(),
       acc = css.getPropertyValue('--acc').trim();
-    const padX = 10,
-      ww = W - padX * 2,
+    const ww = W - padX * 2,
       top = 7,
       rulerH = 15,
       wh = H - top - rulerH - 4,
@@ -117,20 +130,20 @@
       dX0 = Math.round(padX * dpr),
       dMid = Math.round(mid * dpr);
     g.setTransform(1, 0, 0, 1, 0, 0);
-    let k = 0;
+    let k = 0, painted = -1;
     for (let x = 0; x < cols; x++) {
       const t = ((x + 0.5) / cols) * dur;
       while (k + 1 < slices.length && slices[k + 1].start <= t) k++;
-      g.fillStyle = k === h.now ? acc : !used || used.has(k) ? ink : '#c9c6bc';
+      if (k !== painted) {
+        g.fillStyle = palette[k];
+        g.globalAlpha = k === h.now || !used || used.has(k) ? 1 : 0.28;
+        painted = k;
+      }
       const a = Math.max(1, Math.round(pk[x] * (wh / 2) * dpr));
       g.fillRect(dX0 + x * dStep, dMid - a, dBar, a * 2);
     }
+    g.globalAlpha = 1;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // playhead at the start of the sounding slice
-    if (h.now != null) {
-      g.fillStyle = acc;
-      g.fillRect(Math.round(xOf(startOf(h.now))) - 0.5, 2, 1.5, top + wh + 3);
-    }
     // ruler: a tick per slice, bar lines darker, a number every beat
     const ry = H - rulerH;
     g.font = '9px "IBM Plex Mono", ui-monospace, monospace';
@@ -149,16 +162,24 @@
 
   (function loop() {
     const h = heard(),
-      key = [
-        buf ? buf.length : 0,
-        N,
-        slices.length,
-        box.clientWidth,
-        box.clientHeight,
-        devicePixelRatio,
-        h.card ? h.card.id + ':' + h.card.str : '-',
-        h.now,
-      ].join('|');
+      width = box.clientWidth,
+      position = h.time == null ? null : padX + (h.time / buf.duration) * (width - padX * 2);
+    if (position !== lastPosition) {
+      const hidden = position == null;
+      if (head.hidden !== hidden) head.hidden = hidden;
+      if (position != null) head.style.transform = `translateX(${(position - 0.75).toFixed(2)}px)`;
+      lastPosition = position;
+    }
+    const key = [
+      buf ? buf.length : 0,
+      N,
+      slices.length,
+      width,
+      box.clientHeight,
+      devicePixelRatio,
+      h.card ? h.card.id + ':' + h.card.str : '-',
+      h.now,
+    ].join('|');
     if (key !== lastKey) {
       lastKey = key;
       draw(h);

@@ -14,34 +14,47 @@ function swAt(i, sd) {
     w = x < u ? (x * (u + off)) / u : u + off + ((x - u) * (u - off)) / u;
   return w - x;
 }
-function schedStep(c, dest, e, t, dur, raw, i) {
+function schedStep(c, dest, e, t, dur, raw, i, waveHits) {
   if (!e || e.s < 0 || e.hc) return; // half-speed continuation: already sounding
   const half = !!e.hlen,
     n = half ? e.hlen : 1;
+  let swingLength = 0;
   if (i != null) {
-    const sd = dur;
-    t += swAt(i, sd);
-    dur = n * sd + swAt(i + n, sd) - swAt(i, sd);
+    const sd = dur,
+      lag = swAt(i, sd),
+      nextLag = swAt(i + n, sd);
+    t += lag;
+    swingLength = nextLag - lag;
+    dur = n * sd + nextLag - lag;
   } else if (half) dur *= e.hlen;
   const x = half ? 1 : e.x || 1,
     sub = dur / x,
     slice = e.s % N,
-    start = slices[slice].start;
+    start = slices[slice].start,
+    next = slices[slice + (half ? Math.ceil(n / 2) : 1)];
   // CHOP and swung REPITCH can leave space between hits. Keep that space clear of source bleed.
   const swung = i != null && UI.swing > 50;
   const end = !raw && (S.mode === 'chop' || swung)
-    ? (slices[slice + (half ? Math.ceil(n / 2) : 1)]?.start ?? buf.duration)
+    ? (next?.start ?? buf.duration)
     : Infinity;
   const rate =
     Math.pow(2, (e.p || 0) / 12) *
     (!raw && S.mode === 'repitch' ? S.out / S.src : 1) *
     (half ? 0.5 : 1);
-  const need = Math.min((sub + 0.004) * rate, end - start),
-    playable = need / rate;
+  const normalNeed = Math.min((sub + 0.004) * rate, end - start),
+    normalTime = normalNeed / rate;
+  // Fill part of a swing gap with the recorded ring, fading across the borrowed
+  // audio. A snapped boundary might be a transient even if the score has no hit.
+  const borrow = !raw && swingLength > 0 && !half && !e.r && x === 1 && sub - normalTime > 0.004 &&
+    next?.role === '.' && !next.snapped;
+  const need = borrow
+    ? Math.min(sub * rate, normalNeed + 0.04 * rate, (slices[slice + 2]?.start ?? buf.duration) - start)
+    : normalNeed;
+  const playable = need / rate;
   if (playable <= 0) return;
   const off = e.r ? Math.max(0, buf.duration - (start + need)) : start,
     attack = Math.min(0.0015, playable / 2),
-    release = Math.max(attack, playable - 0.0045);
+    release = Math.max(attack, normalTime - 0.0045);
   for (let k = 0; k < x; k++) {
     const tt = t + k * sub,
       src = c.createBufferSource(),
@@ -63,6 +76,15 @@ function schedStep(c, dest, e, t, dur, raw, i) {
     g.gain.setValueAtTime(v, tt + release);
     g.gain.linearRampToValueAtTime(0, tt + playable);
     src.start(tt, off, need);
+    if (waveHits) {
+      // Store what this source node actually plays, in the original buffer's coordinates.
+      waveHits.push({
+        start: tt,
+        end: tt + Math.min(playable, (buf.duration - off) / rate),
+        offset: e.r ? buf.duration - off - 1 / buf.sampleRate : off,
+        rate: e.r ? -rate : rate,
+      });
+    }
   }
 }
 let P = null;
@@ -168,6 +190,7 @@ function play(card, row = 0) {
     i: 0,
     queued: null,
     qrow: null,
+    waveHits: [],
   };
   mark(card, 'play');
   P.timer = setInterval(tick, 20);
@@ -220,6 +243,7 @@ function launch(card, row = null) {
 function tick() {
   const sd = step16(),
     PP = P;
+  P.waveHits = P.waveHits.filter(hit => hit.end > ctx.currentTime);
   while (P.next < ctx.currentTime + 0.15) {
     if (P.i > 0 && P.pos % SPB === 0) {
       // on a bar line
@@ -249,7 +273,7 @@ function tick() {
     const card = P.card,
       i = P.pos;
     if (i % SPB === 0) annotateHalf(card.steps);
-    schedStep(ctx, master, card.steps[i], P.next, sd, false, i);
+    schedStep(ctx, master, card.steps[i], P.next, sd, false, i, P.waveHits);
     const at = (P.next + swAt(i, sd) - ctx.currentTime) * 1000;
     setTimeout(() => {
       if (P !== PP) return;

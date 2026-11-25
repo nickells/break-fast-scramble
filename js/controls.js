@@ -12,7 +12,7 @@ const ARC = v => {
 };
 const fmtK = {
   out: v => (+v).toFixed(v % 1 ? 1 : 0),
-  chaos: v => Math.round(v * 100) + '%',
+  scramble: v => Math.round(v * 100) + '%',
   res: v => (+v).toFixed(1),
   swing: v => (v > 50 ? (v | 0) + '%' : 'OFF'),
   comp: v => Math.round(v * 100) + '%',
@@ -24,7 +24,7 @@ const onControlChange = {
   res: () => applyFilter(),
   comp: () => applyFx(),
   verb: () => applyFx(),
-  chaos: refreshGeneratedCards,
+  scramble: refreshGeneratedCards,
   retrig: refreshGeneratedCards,
   pitch: refreshGeneratedCards,
   rev: refreshGeneratedCards,
@@ -33,8 +33,8 @@ const onControlChange = {
 };
 const KTIP = {
   out: 'BPM — playback and export tempo. Changes live while a pattern plays.',
-  chaos:
-    'CHAOS — how far patterns stray. Low: chunks keep their place in the beat, runs carry on, the backbeat stays strict. High: freer jumps, more fills and ornaments, looser backbeat. The STYLES knobs set what kind of pattern; CHAOS sets how loosely it is played.',
+  scramble:
+    'SCRAMBLE — turn down for longer runs and fewer fills and effects. Turn up for freer jumps. 50% is the default for each style.',
   res: 'RES — filter resonance: the peak at the cutoff. Higher is more squelchy.',
   vol: 'VOL — output level (live playback only).',
   swing:
@@ -112,7 +112,7 @@ function setupKnob(el) {
     const v = el.querySelector('.v'),
       inp = document.createElement('input');
     inp.className = 'kin';
-    inp.value = UI[k];
+    inp.value = k === 'scramble' ? fmtK.scramble(UI[k]) : UI[k];
     v.replaceWith(inp);
     inp.focus();
     inp.select();
@@ -123,7 +123,8 @@ function setupKnob(el) {
       inp.replaceWith(v);
       if (ok) {
         const t = inp.value.trim();
-        set(t === '' ? def : +t || UI[k], true);
+        const n = k === 'scramble' ? Number(t.replace(/%$/, '')) / 100 : Number(t);
+        set(t === '' ? def : Number.isFinite(n) ? n : UI[k], true);
       }
       draw();
     };

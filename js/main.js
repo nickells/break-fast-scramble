@@ -84,7 +84,7 @@ document.addEventListener('keydown', e => {
   delete UI.srcBpm; // left in saves from when other breaks could be dropped in
   await loadArrayBuffer(u.buffer); // the amen, 140 bpm
   if (!restoreCards()) newBatch(false);
-  else if (styleMixMoved || legacyIntroLock) refreshGeneratedCards();
+  else if (styleMixMoved || legacyIntroLock || scrambleMigrated || S.restraint > 0) refreshGeneratedCards();
   sizeCells(); // size the cells to the cards right away (otherwise they sit at the fallback size until the first change)
   if (location.hash === '#selftest')
     selftest().catch(e => {

@@ -74,7 +74,7 @@ const UI_DEF = {
   q: 'bar',
   out: 165,
   mode: 'chop',
-  chaos: 0.35,
+  scramble: 0.5,
   retrig: true,
   pitch: true,
   rev: true,
@@ -89,7 +89,12 @@ const UI_DEF = {
   verb: 0,
   keyShow: false, // source slices + key panel: hidden until asked for
 };
-const UI = Object.assign({}, UI_DEF, JSON.parse(localStorage.getItem('ascr.ui') || '{}'));
+const savedUI = JSON.parse(localStorage.getItem('ascr.ui') || '{}');
+const UI = { ...UI_DEF, ...savedUI };
+// The lower half of Scramble is new. Bring old calm/default settings to the midpoint.
+const scrambleMigrated = savedUI.scramble == null && typeof savedUI.chaos === 'number';
+if (scrambleMigrated) UI.scramble = Math.min(1, 0.5 + Math.max(0, savedUI.chaos - 0.35) / 1.3);
+delete UI.chaos;
 // saves from when the start of each pattern could be locked to the source (KEEP INTRO, or the older lock): patterns
 // made with it are remade without it
 const legacyIntroLock = UI.lock === true || UI.keepIntro === true;
@@ -100,7 +105,7 @@ delete UI.src; // the source tempo is the amen's (S.src)
 delete UI.ideasShow;
 delete UI.keyOpen; // replaced by keyShow (default hidden)
 if ('quant' in UI) {
-  if (!JSON.parse(localStorage.getItem('ascr.ui') || '{}').q) UI.q = UI.quant ? 'bar' : 'none';
+  if (!savedUI.q) UI.q = UI.quant ? 'bar' : 'none';
   delete UI.quant;
 } // migrate the old Q BAR toggle
 [
@@ -123,7 +128,11 @@ const S = {
     return UI.mode;
   },
   get chaos() {
-    return UI.chaos;
+    const v = UI.scramble;
+    return v <= 0.5 ? 0.7 * v : 0.35 + 1.3 * (v - 0.5);
+  },
+  get restraint() {
+    return Math.max(0, 1 - 2 * UI.scramble);
   },
 };
 const OPT = {
