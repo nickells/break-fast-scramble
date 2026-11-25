@@ -11,7 +11,7 @@ fLP.type = 'lowpass';
 fHP.type = 'highpass';
 fLP.frequency.value = 22000;
 fHP.frequency.value = 10;
-/* FX: filter → dry + reverb send → compressor (so the room pumps with the kit) → makeup → brickwall → out */
+/* FX: filter → dry + reverb send → compressor (so the room pumps with the kit) → makeup → limiter → VOL → clipper → out */
 const vSend = ctx.createGain(),
   conv = ctx.createConvolver(),
   fxSum = ctx.createGain(),
@@ -40,6 +40,36 @@ lim.ratio.value = 20;
 lim.knee.value = 0;
 lim.attack.value = 0.001;
 lim.release.value = 0.08;
+/* the limiter is a DynamicsCompressor: 1 ms attack plus its own automatic makeup gain, so hits overshoot it by up to
+   ~1.5 dB. A soft clipper after it is the real ceiling: straight through below CLIP_KNEE, bending into CLIP_CEIL (−1 dBFS)
+   above it — jungle-style clipping on the stray transients instead of digital wrap at the output. The shaper's curve only
+   spans ±1, so its input is halved and the curve maps ±2 of real level. */
+const CLIP_KNEE = Math.pow(10, -3 / 20),
+  CLIP_CEIL = Math.pow(10, -1 / 20),
+  CLIP_CURVE = (() => {
+    const n = 4097,
+      k = CLIP_KNEE,
+      w = CLIP_CEIL - CLIP_KNEE,
+      d = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = (i / (n - 1)) * 4 - 2,
+        a = Math.abs(x);
+      d[i] = Math.sign(x) * (a <= k ? a : k + w * Math.tanh((a - k) / w));
+    }
+    return d;
+  })();
+function clipper(c) {
+  const g = c.createGain(),
+    sh = c.createWaveShaper();
+  g.gain.value = 0.5;
+  sh.curve = CLIP_CURVE;
+  // no oversampling: its resampling filters ring past the ceiling (up to +1 dB over at full COMP) and add latency.
+  // The tanh bend is gentle enough that the aliasing it leaves stays under the drums.
+  sh.oversample = 'none';
+  g.connect(sh);
+  return [g, sh];
+}
+const [clipIn, clipOut] = clipper(ctx);
 master.connect(fLP);
 fLP.connect(fHP);
 fHP.connect(fxSum);
@@ -50,19 +80,92 @@ fxSum.connect(comp);
 comp.connect(mkup);
 mkup.connect(lim);
 lim.connect(outG);
-outG.connect(ctx.destination);
+outG.connect(clipIn);
+clipOut.connect(ctx.destination);
+/* the FILTER / COMP / VERB targets for the current knobs: live playback glides to them, WAV export sets them outright */
+function fxSettings(ui = UI) {
+  const x = ui.filt ?? 0,
+    q = ui.res,
+    dead = 0.03,
+    u = ui.comp ?? 0,
+    v = ui.verb ?? 0;
+  let lp = 22000,
+    hp = 10,
+    txt = 'OFF';
+  // DJ filter: one bipolar fader. left = low-pass sweeping down, right = high-pass sweeping up, centre = bypass
+  if (x < -dead) {
+    lp = 22000 * Math.pow(60 / 22000, (-x - dead) / (1 - dead));
+    txt = 'LP ' + (lp >= 1000 ? (lp / 1000).toFixed(1) + 'k' : Math.round(lp)) + 'Hz';
+  } else if (x > dead) {
+    hp = 10 * Math.pow(9000 / 10, (x - dead) / (1 - dead));
+    txt = 'HP ' + (hp >= 1000 ? (hp / 1000).toFixed(1) + 'k' : Math.round(hp)) + 'Hz';
+  }
+  return {
+    lp,
+    hp,
+    lpQ: x < -dead ? q : 0.7,
+    hpQ: x > dead ? q : 0.7,
+    txt,
+    // COMP: one knob — threshold falls and ratio rises together; slow-ish attack lets the stick through, quick release pumps
+    thr: -u * 32,
+    ratio: 1 + u * 11,
+    mkup: Math.pow(10, (u * 13) / 20),
+    send: v * v * 1.1,
+  };
+}
 function applyFx() {
   const t = ctx.currentTime,
-    u = UI.comp ?? 0,
-    v = UI.verb ?? 0;
-  // COMP: one knob — threshold falls and ratio rises together; slow-ish attack lets the stick through, quick release pumps
-  comp.threshold.setTargetAtTime(-u * 32, t, 0.02);
-  comp.ratio.setTargetAtTime(1 + u * 11, t, 0.02);
+    f = fxSettings();
+  comp.threshold.setTargetAtTime(f.thr, t, 0.02);
+  comp.ratio.setTargetAtTime(f.ratio, t, 0.02);
   comp.knee.value = 4;
   comp.attack.value = 0.006;
   comp.release.value = 0.09;
-  mkup.gain.setTargetAtTime(Math.pow(10, (u * 13) / 20), t, 0.02);
-  vSend.gain.setTargetAtTime(v * v * 1.1, t, 0.02);
+  mkup.gain.setTargetAtTime(f.mkup, t, 0.02);
+  vSend.gain.setTargetAtTime(f.send, t, 0.02);
+}
+/* the live chain rebuilt in another (offline) context, set to f: master → LP → HP → dry + verb → comp → makeup → limiter → clipper.
+   Returns its input. VOL (outG) stays out: it is the monitor level, not part of the sound. */
+function fxChain(c, f) {
+  const n = () => c.createGain(),
+    inG = n(),
+    lp = c.createBiquadFilter(),
+    hp = c.createBiquadFilter(),
+    send = n(),
+    cv = c.createConvolver(),
+    sum = n(),
+    cp = c.createDynamicsCompressor(),
+    mk = n(),
+    li = c.createDynamicsCompressor();
+  inG.gain.value = master.gain.value;
+  lp.type = 'lowpass';
+  hp.type = 'highpass';
+  lp.frequency.value = f.lp;
+  lp.Q.value = f.lpQ;
+  hp.frequency.value = f.hp;
+  hp.Q.value = f.hpQ;
+  send.gain.value = f.send;
+  cv.buffer = conv.buffer; // the same room you hear, not a fresh noise burst
+  cp.threshold.value = f.thr;
+  cp.ratio.value = f.ratio;
+  cp.knee.value = 4;
+  cp.attack.value = 0.006;
+  cp.release.value = 0.09;
+  mk.gain.value = f.mkup;
+  for (const k of ['threshold', 'ratio', 'knee', 'attack', 'release']) li[k].value = lim[k].value;
+  inG.connect(lp);
+  lp.connect(hp);
+  hp.connect(sum);
+  hp.connect(send);
+  send.connect(cv);
+  cv.connect(sum);
+  sum.connect(cp);
+  cp.connect(mk);
+  mk.connect(li);
+  const [ci, co] = clipper(c);
+  li.connect(ci);
+  co.connect(c.destination);
+  return inG;
 }
 let buf = null,
   rbuf = null,

@@ -137,7 +137,7 @@ function makeCard(pat, id) {
     navigator.clipboard.writeText(`#${id} "${card.name}" ${card.str}`);
   el.querySelector('.wv').onclick = async () => {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(wav(await render(card.steps, 2)));
+    a.href = URL.createObjectURL(wav(await render(card.steps, 2, true)));
     a.download = `amen-${id}-${card.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${
       S.out
     }bpm.wav`;

@@ -35,11 +35,11 @@ const KTIP = {
   scramble:
     'SCRAMBLE — turn down for longer runs and fewer fills and effects. Above 50%, freer jumps and occasional flourishes into bar 4.',
   res: 'RES — filter resonance: the peak at the cutoff. Higher is more squelchy.',
-  vol: 'VOL — output level (live playback only).',
+  vol: 'VOL — monitor level (live playback only; WAV exports ignore it).',
   swing:
     'SWING — pushes every off-beat 16th late, sampler style. 50% = straight, 54–58% = a lazy shuffle, 67% = full triplet swing. Changes live, and WAV exports swing too.',
-  comp: 'COMP — squash the break: one knob lowers the threshold and raises the ratio together, with makeup gain. A little = glue, all the way = pumping, smashed jungle drums. Live only.',
-  verb: 'VERB — a small bright room sent before the compressor, so it ducks under every hit and swells in the gaps. Live only.',
+  comp: 'COMP — squash the break: one knob lowers the threshold and raises the ratio together, with makeup gain. A little = glue, all the way = pumping, smashed jungle drums. Baked into WAV exports.',
+  verb: 'VERB — a small bright room sent before the compressor, so it ducks under every hit and swells in the gaps. Baked into WAV exports, tail wrapped so the loop is seamless.',
 };
 /* while a knob or the fader is being dragged: no text selection anywhere, and the drag cursor everywhere */
 function dragOn(cur) {
@@ -210,38 +210,21 @@ document.querySelectorAll('.tog').forEach(b => {
   document.addEventListener('pointerdown', hide, true);
   addEventListener('scroll', hide, true);
 })();
-/* DJ filter: one bipolar fader. left = low-pass sweeping down, right = high-pass sweeping up, centre = bypass */
+/* DJ filter: one bipolar fader (the mapping lives in fxSettings) */
 function applyFilter() {
   const x = UI.filt,
     t = ctx.currentTime,
-    q = UI.res,
-    dead = 0.03;
-  let lp = 22000,
-    hp = 10,
-    lpq = 0.0001,
-    hpq = 0.0001,
-    txt = 'OFF';
-  if (x < -dead) {
-    const u = (-x - dead) / (1 - dead);
-    lp = 22000 * Math.pow(60 / 22000, u);
-    lpq = q;
-    txt = 'LP ' + (lp >= 1000 ? (lp / 1000).toFixed(1) + 'k' : Math.round(lp)) + 'Hz';
-  } else if (x > dead) {
-    const u = (x - dead) / (1 - dead);
-    hp = 10 * Math.pow(9000 / 10, u);
-    hpq = q;
-    txt = 'HP ' + (hp >= 1000 ? (hp / 1000).toFixed(1) + 'k' : Math.round(hp)) + 'Hz';
-  }
-  fLP.frequency.setTargetAtTime(lp, t, 0.015);
-  fHP.frequency.setTargetAtTime(hp, t, 0.015);
-  fLP.Q.setTargetAtTime(x < -dead ? q : 0.7, t, 0.02);
-  fHP.Q.setTargetAtTime(x > dead ? q : 0.7, t, 0.02);
-  $('#fval').textContent = txt;
+    f = fxSettings();
+  fLP.frequency.setTargetAtTime(f.lp, t, 0.015);
+  fHP.frequency.setTargetAtTime(f.hp, t, 0.015);
+  fLP.Q.setTargetAtTime(f.lpQ, t, 0.02);
+  fHP.Q.setTargetAtTime(f.hpQ, t, 0.02);
+  $('#fval').textContent = f.txt;
   const pc = ((x + 1) / 2) * 100;
   $('#fcap').style.left = pc + '%';
-  const f = $('#ffill');
-  f.style.left = Math.min(50, pc) + '%';
-  f.style.width = Math.abs(pc - 50) + '%';
+  const fill = $('#ffill');
+  fill.style.left = Math.min(50, pc) + '%';
+  fill.style.width = Math.abs(pc - 50) + '%';
 }
 (() => {
   const fd = $('#fader'),

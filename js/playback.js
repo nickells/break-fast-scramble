@@ -293,19 +293,60 @@ function tick() {
     P.pos = (P.pos + 1) % LEN;
   }
 }
-async function render(steps, loops = 1) {
+/* frames the FX chain delays its output by (the compressors look ahead), per sample rate: an impulse through a neutral chain */
+const fxLatency = {};
+async function chainLatency(sr) {
+  if (fxLatency[sr] != null) return fxLatency[sr];
+  const n = Math.ceil(sr * 0.1),
+    oc = new OfflineAudioContext(1, n, sr),
+    imp = oc.createBuffer(1, 1, sr),
+    src = oc.createBufferSource();
+  imp.getChannelData(0)[0] = 0.25;
+  src.buffer = imp;
+  src.connect(fxChain(oc, fxSettings({ filt: 0, res: 1, comp: 0, verb: 0 })));
+  src.start(0);
+  const d = (await oc.startRendering()).getChannelData(0);
+  let k = 0;
+  for (let i = 1; i < n; i++) if (Math.abs(d[i]) > Math.abs(d[k])) k = i;
+  return (fxLatency[sr] = k);
+}
+/* fx = false: the dry slices (the self-test nulls this against the source).
+   fx = true, for WAV export: through the same filter / comp / verb / limiter as live playback, exactly `loops` loops long
+   and loopable — one extra loop is rendered first and dropped, so the file opens with the previous loop's reverb tail and
+   a settled compressor, as it does when looping live. */
+async function render(steps, loops = 1, fx = false) {
   const sd = step16(),
     sr = buf.sampleRate,
-    len = Math.ceil((LEN * sd * loops + 0.05) * sr);
-  const oc = new OfflineAudioContext(buf.numberOfChannels, len, sr),
-    og = oc.createGain();
-  og.gain.value = 0.85;
-  og.connect(oc.destination);
+    nc = buf.numberOfChannels;
   annotateHalf(steps);
   const topLoop = isTopLoop(steps);
-  for (let l = 0; l < loops; l++)
-    for (let i = 0; i < LEN; i++) schedStep(oc, og, steps[i], (l * LEN + i) * sd, sd, false, i, undefined, topLoop);
-  return oc.startRendering();
+  if (!fx) {
+    const oc = new OfflineAudioContext(nc, Math.ceil((LEN * sd * loops + 0.05) * sr), sr),
+      og = oc.createGain();
+    og.gain.value = master.gain.value;
+    og.connect(oc.destination);
+    for (let l = 0; l < loops; l++)
+      for (let i = 0; i < LEN; i++) schedStep(oc, og, steps[i], (l * LEN + i) * sd, sd, false, i, undefined, topLoop);
+    return oc.startRendering();
+  }
+  const pre = Math.round(LEN * sd * sr) + (await chainLatency(sr)),
+    len = Math.round(LEN * sd * loops * sr),
+    oc = new OfflineAudioContext(nc, pre + len, sr),
+    input = fxChain(oc, fxSettings());
+  for (let l = 0; l <= loops; l++)
+    for (let i = 0; i < LEN; i++) schedStep(oc, input, steps[i], (l * LEN + i) * sd, sd, false, i, undefined, topLoop);
+  const full = await oc.startRendering(),
+    out = ctx.createBuffer(nc, len, sr),
+    ch = [...Array(nc)].map((_, c) => full.getChannelData(c).slice(pre, pre + len));
+  // backstop at −1 dBFS: the clipper already holds the ceiling; this only catches what it ever misses.
+  // Only ever turned down, so an export is never louder than what you hear.
+  const peak = Math.max(...ch.map(d => d.reduce((m, s) => Math.max(m, Math.abs(s)), 0))),
+    ceil = Math.pow(10, -1 / 20);
+  ch.forEach((d, c) => {
+    if (peak > ceil) for (let i = 0; i < len; i++) d[i] *= ceil / peak;
+    out.copyToChannel(d, c);
+  });
+  return out;
 }
 function wav(ab) {
   const nc = ab.numberOfChannels,
