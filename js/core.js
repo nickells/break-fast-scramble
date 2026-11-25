@@ -80,6 +80,7 @@ const UI_DEF = {
   rev: true,
   half: true,
   gap: true,
+  kicks: true,
   res: 4,
   vol: 0.85,
   filt: 0,

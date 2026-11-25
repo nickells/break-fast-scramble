@@ -1,7 +1,7 @@
 'use strict';
 
 /* ---------- styles ----------
-   The controls are STYLES: JUNGLE, DRUMFUNK, LIQUID, ROLLERS, HALFTIME, DRILL. Each style is a profile: a value for every
+   The controls are STYLES: JUNGLE, DRUMFUNK, LIQUID, ROLLERS, DRILL. Each style is a profile: a value for every
    setting inside the generator (how finely the break is cut, how often each idea lands, how many rolls…). The style
    pad sets the weights, and every setting is the weighted average of the styles' values, so styles blend inside the
    same pattern instead of taking turns. Each tip shows its style's share of the mix.
@@ -26,38 +26,33 @@
      often beat 2's snare cell again on step 10, so the snare sits on 10 in half the bars and on beat 4 in a quarter.
    - a 180 bpm liquid top loop: a hit on every 8th that sounds out into the next 16th, 16th pickups into strong hits,
      two hat voices in a fixed alternation, one bar repeated, the last bar shifted two 16ths early.
-   JUNGLE and LIQUID come from those files. DRUMFUNK, ROLLERS, HALFTIME and DRILL are readings of each style, not
+   JUNGLE and LIQUID come from those files. DRUMFUNK, ROLLERS and DRILL are readings of each style, not
    measurements: tune them by ear, or measure a reference loop and set them from that. */
 const STYLES = [
   {
     k: 'sJungle', id: 'jungle', label: 'JUNGLE', def: 1,
     tip: 'Classic Amen cuts. The kick doubles back on the "&" of 3, and the snare answers with fills and rolls.',
-    v: { cut: 0.45, smooth: 0, hats: 0, loop: 0, call: 0.5, turn: 0.1, echo6: 0.3, kick3: 0.3, keep: 0.45, sn24: 0.2, cell2: 0.2, snfwd: 0.35, ht: 0, ghost: 0.05, pick: 0.15, rollEnd: 0.5, rollScatter: 0.05, rev: 0.35, drag: 0.2, gap: 0.22 },
+    v: { cut: 0.45, earlyKick: 1, smooth: 0, hats: 0, loop: 0, call: 0.5, turn: 0.1, echo6: 0.3, kick3: 0.3, keep: 0.45, sn24: 0.2, cell2: 0.2, snfwd: 0.35, ghost: 0.05, pick: 0.15, rollEnd: 0.5, rollScatter: 0.05, rev: 0.35, drag: 0.2, gap: 0.22 },
   },
   {
     k: 'sFunk', id: 'drumfunk', label: 'DRUMFUNK', def: 0,
     tip: 'Fine cuts, ghost snares, and shuffling hats. The little hits do the talking.',
-    v: { cut: 0.65, smooth: 0, hats: 0, loop: 0, call: 0.3, turn: 0, echo6: 0.35, kick3: 0.2, keep: 0.5, sn24: 0.2, cell2: 0.3, snfwd: 0.4, ht: 0, ghost: 0.45, pick: 0.7, rollEnd: 0.35, rollScatter: 0.1, rev: 0.15, drag: 0.05, gap: 0.1 },
+    v: { cut: 0.65, earlyKick: 0.45, smooth: 0, hats: 0, loop: 0, call: 0.3, turn: 0, echo6: 0.35, kick3: 0.2, keep: 0.5, sn24: 0.2, cell2: 0.3, snfwd: 0.4, ghost: 0.45, pick: 0.7, rollEnd: 0.35, rollScatter: 0.1, rev: 0.15, drag: 0.05, gap: 0.1 },
   },
   {
     k: 'sLiquid', id: 'liquid', label: 'LIQUID', def: 0,
     tip: 'An eighth-note glide, a roaming backbeat, and a quiet pickup into the turn.',
-    v: { cut: 0.25, smooth: 1, hats: 1, loop: 0.9, call: 1, turn: 0, echo6: 0.05, kick3: 0.1, keep: 0.1, sn24: 0.05, cell2: 0, snfwd: 0.1, ht: 0, ghost: 0.05, pick: 0.9, rollEnd: 0.1, rollScatter: 0, rev: 0.05, drag: 0.03, gap: 0 },
+    v: { cut: 0.25, earlyKick: 0.25, smooth: 1, hats: 1, loop: 0.9, call: 1, turn: 0, echo6: 0.05, kick3: 0.1, keep: 0.1, sn24: 0.05, cell2: 0, snfwd: 0.1, ghost: 0.05, pick: 0.9, rollEnd: 0.1, rollScatter: 0, rev: 0.05, drag: 0.03, gap: 0 },
   },
   {
     k: 'sRoller', id: 'rollers', label: 'ROLLERS', def: 0,
     tip: 'A steady two-step. Whole bars roll by with just enough variation to keep moving.',
-    v: { cut: 0.1, smooth: 0.3, hats: 0.4, loop: 0.6, call: 0.8, turn: 0.2, echo6: 0.1, kick3: 0.8, keep: 0.35, sn24: 0.1, cell2: 0.05, snfwd: 0.2, ht: 0, ghost: 0.05, pick: 0.4, rollEnd: 0.25, rollScatter: 0, rev: 0.1, drag: 0.05, gap: 0.05 },
-  },
-  {
-    k: 'sHalf', id: 'halftime', label: 'HALFTIME', def: 0,
-    tip: 'Snare on 3, long drags, and room to breathe. 170 feels like 85.',
-    v: { cut: 0.3, smooth: 0.4, hats: 0.3, loop: 0.5, call: 0.7, turn: 0.1, echo6: 0.1, kick3: 0.1, keep: 0.3, sn24: 0, cell2: 0.1, snfwd: 0, ht: 1, ghost: 0.1, pick: 0.3, rollEnd: 0.2, rollScatter: 0, rev: 0.2, drag: 0.3, gap: 0.3 },
+    v: { cut: 0.1, earlyKick: 0, smooth: 0.3, hats: 0.4, loop: 0.6, call: 0.8, turn: 0.2, echo6: 0.1, kick3: 0.8, keep: 0.35, sn24: 0.1, cell2: 0.05, snfwd: 0.2, ghost: 0.05, pick: 0.4, rollEnd: 0.25, rollScatter: 0, rev: 0.1, drag: 0.05, gap: 0.05 },
   },
   {
     k: 'sDrill', id: 'drill', label: 'DRILL', def: 0,
     tip: 'Sixteenth-note cuts, stray rolls, and stutters that show up wherever they like.',
-    v: { cut: 1, smooth: 0, hats: 0, loop: 0, call: 0.05, turn: 0, echo6: 0.4, kick3: 0.2, keep: 0.1, sn24: 0.3, cell2: 0.7, snfwd: 0.3, ht: 0, ghost: 0.1, pick: 0.2, rollEnd: 0.9, rollScatter: 0.8, rev: 0.4, drag: 0.2, gap: 0.2 },
+    v: { cut: 1, earlyKick: 0.55, smooth: 0, hats: 0, loop: 0, call: 0.05, turn: 0, echo6: 0.4, kick3: 0.2, keep: 0.1, sn24: 0.3, cell2: 0.7, snfwd: 0.3, ghost: 0.1, pick: 0.2, rollEnd: 0.9, rollScatter: 0.8, rev: 0.4, drag: 0.2, gap: 0.2 },
   },
 ];
 const PKEYS = Object.keys(STYLES[0].v);
@@ -76,13 +71,16 @@ const styleShare = k => {
   return tot > 0 ? (UI[k] || 0) / tot : k === STYLES[0].k ? 1 : 0;
 };
 // Each triangular sector blends its two tips and the equal mix at the center.
-const defaultStyleOrder = [0, 1, 5, 4, 2, 3].map(i => STYLES[i].id);
-const savedStyleOrder = UI.styleOrder;
+const defaultStyleOrder = ['jungle', 'drumfunk', 'drill', 'liquid', 'rollers'];
+const removedHalftime = UI.sHalf > 0;
+delete UI.sHalf;
+const savedStyleOrder = Array.isArray(UI.styleOrder) ? UI.styleOrder.filter(id => id !== 'halftime') : [];
+const styleAngle = 2 * Math.PI / STYLES.length;
 const styleOrder = Array.isArray(savedStyleOrder) && savedStyleOrder.length === defaultStyleOrder.length &&
   new Set(savedStyleOrder).size === defaultStyleOrder.length && savedStyleOrder.every(id => defaultStyleOrder.includes(id))
   ? savedStyleOrder : defaultStyleOrder;
 const styleTips = styleOrder.map((id, i) => {
-  const angle = i * Math.PI / 3;
+  const angle = i * styleAngle;
   return { ...STYLES.find(s => s.id === id), x: Math.sin(angle), y: -Math.cos(angle) };
 });
 const stylePosition = () => styleTips.reduce(
@@ -90,7 +88,7 @@ const stylePosition = () => styleTips.reduce(
 );
 function padWeights(x, y) {
   const angle = Math.atan2(x, -y);
-  const sector = Math.floor(((angle + 2 * Math.PI) % (2 * Math.PI)) / (Math.PI / 3));
+  const sector = Math.floor(((angle + 2 * Math.PI) % (2 * Math.PI)) / styleAngle) % styleTips.length;
   const next = (sector + 1) % styleTips.length;
   const a = styleTips[sector], b = styleTips[next];
   const det = a.x * b.y - a.y * b.x;
@@ -446,7 +444,8 @@ STYLES.forEach(s => {
   if (UI[s.k] == null) UI[s.k] = s.def;
 });
 // Old knob mixes could occupy dimensions the pad has no room for. Project to their weighted position.
-const styleMixMoved = setStylePosition(...stylePosition());
+UI.styleOrder = styleOrder;
+const styleMixMoved = setStylePosition(...stylePosition()) || removedHalftime;
 saveUI();
 
 const moveAmount = (idea, amount) =>
@@ -509,24 +508,12 @@ function applyIdeas(R, p, genes) {
 
 function grooveForBar(R, bar) {
   const feel = R('groove:' + bar)();
-  if (feel < MIX.ht) return 'halftime';
-  if (feel < MIX.ht + styleShare('sRoller')) return 'rollers';
-}
-
-// Keep the ring of a softened snare at the same level until the next strike.
-function tuckSnare(p, i) {
-  const e = p[i], tail = p[i + 1];
-  e.v = Math.min(e.v || 0, -13);
-  if (tail?.s === e.s + 1 && slices[tail.s].role === '.' && !e.h && !tail.h &&
-    (e.x || 1) === 1 && (tail.x || 1) === 1 && !e.r && !tail.r && e.p === tail.p) {
-    tail.v = Math.min(tail.v || 0, e.v);
-  }
+  if (feel < styleShare('sRoller')) return 'rollers';
 }
 
 // Set the last accent and level decisions after ornaments have shaped the bar.
 function finishGroove(R, p, genes, grooves) {
   const funk = styleShare('sFunk');
-  if (!funk && !grooves.some(Boolean)) return;
   const roles = new Set(slices.map(s => s.role));
   const voice = (r, role) => pickBy(r, i =>
     roles.has(role) && slices[i].role !== role ? -Infinity : roleScore(i, role) + 0.5 * tailOK(i),
@@ -534,32 +521,40 @@ function finishGroove(R, p, genes, grooves) {
   const anchor = (i, role) => {
     const e = p[i];
     const s = slices[e.s]?.role === role ? e.s : voice(R('anchor:' + i % SPB), role);
-    if (e.s !== s || e.h || e.r || e.x > 1 || e.p || e.v) p[i] = ev(s);
+    if (e.s !== s || e.h || e.r || e.x > 1 || e.p) p[i] = ev(s);
   };
+  // For a cymbal substitution, use a strike that actually rings into the next slice.
+  const ridePair = r => pickBy(r, i =>
+    slices[i].role === 'h' && slices[i + 1]?.role === '.' ? roleScore(i, 'h') : -Infinity,
+  );
   for (let b = 0; b < BARS; b++) {
-    const start = b * SPB, end = start + SPB;
-    if (grooves[b] === 'halftime') {
-      const snare = start + 8;
-      anchor(snare, 'S');
-      for (let i = start; i < end; i++) {
-        if (i === snare) continue;
-        const e = p[i];
-        const role = slices[e.s]?.role;
-        if (role === 'S') tuckSnare(p, i);
-        if (role === 'K' && i > snare && i <= snare + 2) e.v = Math.min(e.v || 0, -5);
-      }
-      genes.grp.push('halftime (bar ' + (b + 1) + ')');
-    } else if (grooves[b] === 'rollers') {
+    const start = b * SPB;
+    if (grooves[b] === 'rollers') {
       for (const [pos, role] of [[0, 'K'], [4, 'S'], [10, 'K'], [12, 'S']])
         anchor(start + pos, role);
-      // Keep the backbeat above the extra snare an eighth note later.
+      // Keep the beat-four backbeat clear. Continue with a ride hit and its ring.
       const extra = p[start + 14], tail = p[start + 15];
       if (slices[extra.s]?.role === 'S' && !extra.h && (!OPT.retrig || extra.x <= 1)) {
-        extra.v = Math.min(extra.v || 0, -13);
-        if (tail.s === extra.s + 1 && !isAccent(tail.s) && !tail.h &&
+        const ride = ridePair(R('roller ride:' + b));
+        p[start + 14] = ev(ride);
+        if (tail.s === extra.s + 1 && slices[tail.s]?.role === '.' && !tail.h &&
           (!OPT.retrig || tail.x <= 1) && !extra.r && !tail.r && extra.p === tail.p) {
-          tail.v = Math.min(tail.v || 0, extra.v);
+          p[start + 15] = ev(ride + 1);
         }
+      }
+    }
+
+    // The Amen's kick on 1 and its offbeat can come along in a longer opening cut.
+    // Keep that opening in Jungle and use it more selectively across the other styles.
+    const opening = R('early kick:' + b);
+    if (MIX.earlyKick < 1 && slices[p[start].s]?.hits.kick && !p[start].h && chance(opening, 1 - MIX.earlyKick)) {
+      for (const pos of [2, 3]) {
+        const i = start + pos, e = p[i], tail = p[i + 1];
+        if (!slices[e.s]?.hits.kick || e.h || (OPT.retrig && e.x > 1)) continue;
+        const ride = ridePair(opening);
+        p[i] = ev(ride);
+        if (pos === 2 && tail.s === e.s + 1 && slices[tail.s].role === '.' &&
+          !tail.h && !tail.r && (!OPT.retrig || tail.x <= 1) && !tail.p) p[i + 1] = ev(ride + 1);
       }
     }
 
@@ -570,8 +565,9 @@ function finishGroove(R, p, genes, grooves) {
       .filter(i => [p[i], p[i + 1]].every(e => !e.h && (e.x || 1) === 1 && !hitAt(e)));
     if (!starts.length) continue;
     const at = starts[Math.floor(rs() * starts.length)];
-    p[at] = { ...ev(voice(rs, 'h')), v: -7 - Math.floor(rs() * 4) };
-    p[at + 1] = { ...ev(voice(rs, 'g')), v: -5 - Math.floor(rs() * 5) };
+    p[at] = ev(voice(rs, 'h'));
+    rs(); // Keep the seeded ghost choice after removing the hat's gain draw.
+    p[at + 1] = ev(voice(rs, 'g'));
     genes.grp.push('hat–ghost shuffle (bar ' + (b + 1) + ')');
   }
 }
@@ -625,16 +621,17 @@ function markIdea(k) {
   }
   MIX = mixStyles(); // generate() above mixed with this style at 0
 }
-/* Vector pad and its six solo buttons. */
+/* Vector pad and solo buttons. */
 (() => {
   const strip = $('#ideas');
   if (!strip) return;
+  const polygon = styleTips.map(({ x, y }) => `${50 + x * 50}% ${50 + y * 50}%`).join(', ');
   strip.innerHTML = `<div class="style-mixer">
     <div class="style-mixer-bar"><span class="cap">STYLE MIX</span><button type="button" id="ideasReset">RESET MIX</button></div>
     <div class="style-field">
       <span class="style-origin" hidden aria-hidden="true"></span>
       <button type="button" class="style-pad" data-tip="Drag toward a style to blend. Click a style to solo it. Arrow keys move the puck. Home resets to Jungle.">
-        <span class="style-hex" aria-hidden="true">${styleTips.map((_, i) => `<span style="--spoke:${i * 60 - 90}deg"></span>`).join('')}</span>
+        <span class="style-polygon" style="--style-outline:polygon(${polygon})" aria-hidden="true">${styleTips.map((_, i) => `<span style="--spoke:${i * 360 / styleTips.length - 90}deg"></span>`).join('')}</span>
         <span class="style-puck" aria-hidden="true"></span>
       </button>
       ${styleTips.map(s => `<button type="button" class="style-tip" aria-keyshortcuts="Shift+ArrowLeft Shift+ArrowRight" style="--tip-x:${s.x};--tip-y:${s.y}"><span class="style-name">${s.label}</span><span class="style-share"></span></button>`).join('')}
@@ -649,13 +646,11 @@ function markIdea(k) {
     puck.style.left = `${50 + x * 50}%`;
     puck.style.top = `${50 + y * 50}%`;
     const exact = styleTips.map(s => styleShare(s.k) * 100);
-    const equal = exact.every(value => Math.abs(value - 100 / styleTips.length) < 1e-8);
     const shares = exact.map(Math.floor);
     const remainder = 100 - shares.reduce((a, b) => a + b, 0);
     exact.map((value, i) => ({ i, fraction: value - shares[i] }))
       .sort((a, b) => b.fraction - a.fraction).slice(0, remainder).forEach(({ i }) => shares[i]++);
     const labels = shares.map((share, i) => {
-      if (equal) return '16⅔%';
       if (share === 0 && exact[i] > 0) return '<1%';
       if (share === 100 && exact[i] < 100 - 1e-8) return '>99%';
       return `${share}%`;

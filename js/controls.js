@@ -10,14 +10,12 @@ const ARC = v => {
     [x1, y1] = p(a);
   return `M${x0} ${y0}A${r} ${r} 0 ${a - a0 > 180 ? 1 : 0} 1 ${x1} ${y1}`;
 };
+const percentScale = { scramble: 100, swing: 1, comp: 100, verb: 100, vol: 100 };
+const formatPercent = (k, v) => Math.round(v * percentScale[k]) + '%';
 const fmtK = {
   out: v => (+v).toFixed(v % 1 ? 1 : 0),
-  scramble: v => Math.round(v * 100) + '%',
   res: v => (+v).toFixed(1),
-  swing: v => (v > 50 ? (v | 0) + '%' : 'OFF'),
-  comp: v => Math.round(v * 100) + '%',
-  verb: v => Math.round(v * 100) + '%',
-  vol: v => Math.round(v * 100) + '%',
+  swing: v => (v > 50 ? formatPercent('swing', v) : 'OFF'),
 };
 const onControlChange = {
   vol: v => outG.gain.setTargetAtTime(v, ctx.currentTime, 0.02),
@@ -30,11 +28,12 @@ const onControlChange = {
   rev: refreshGeneratedCards,
   half: refreshGeneratedCards,
   gap: refreshGeneratedCards,
+  kicks: refreshGeneratedCards,
 };
 const KTIP = {
   out: 'BPM — playback and export tempo. Changes live while a pattern plays.',
   scramble:
-    'SCRAMBLE — turn down for longer runs and fewer fills and effects. Turn up for freer jumps. 50% is the default for each style.',
+    'SCRAMBLE — turn down for longer runs and fewer fills and effects. Above 50%, freer jumps and occasional flourishes into bar 4.',
   res: 'RES — filter resonance: the peak at the cutoff. Higher is more squelchy.',
   vol: 'VOL — output level (live playback only).',
   swing:
@@ -63,7 +62,7 @@ function setupKnob(el) {
     const v = (UI[k] - min) / (max - min);
     el.querySelector('.a').setAttribute('d', v > 0.001 ? ARC(v) : '');
     el.querySelector('.n').setAttribute('transform', `rotate(${-135 + 270 * v} 22 22)`);
-    el.querySelector('.v').textContent = (fmtK[k] || (v => Math.round(v * 100) + '%'))(UI[k]);
+    el.querySelector('.v').textContent = fmtK[k] ? fmtK[k](UI[k]) : formatPercent(k, UI[k]);
   };
   el._draw = draw;
   const set = (v, commit) => {
@@ -109,10 +108,12 @@ function setupKnob(el) {
     set(UI[k] - Math.sign(e.deltaY) * st * (e.shiftKey ? 1 : (max - min) / st > 50 ? 2 : 1), true);
   };
   el.ondblclick = () => {
-    const v = el.querySelector('.v'),
-      inp = document.createElement('input');
+    const v = el.querySelector('.v');
+    if (!v) return;
+    const inp = document.createElement('input');
     inp.className = 'kin';
-    inp.value = k === 'scramble' ? fmtK.scramble(UI[k]) : UI[k];
+    const scale = percentScale[k];
+    inp.value = scale ? formatPercent(k, UI[k]) : UI[k];
     v.replaceWith(inp);
     inp.focus();
     inp.select();
@@ -123,7 +124,8 @@ function setupKnob(el) {
       inp.replaceWith(v);
       if (ok) {
         const t = inp.value.trim();
-        const n = k === 'scramble' ? Number(t.replace(/%$/, '')) / 100 : Number(t);
+        const number = scale ? t.replace(/%$/, '').trim() : t;
+        const n = number === '' ? NaN : Number(number) / (scale || 1);
         set(t === '' ? def : Number.isFinite(n) ? n : UI[k], true);
       }
       draw();
@@ -165,6 +167,7 @@ document.querySelectorAll('.tog').forEach(b => {
   const k = b.dataset.k,
     draw = () => {
       b.classList.toggle('on', !!UI[k]);
+      if (k === 'kicks') b.setAttribute('aria-pressed', !!UI[k]);
     };
   b.onclick = () => {
     UI[k] = !UI[k];

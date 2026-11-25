@@ -1,8 +1,8 @@
 'use strict';
 
 /* ---------- knowledge: where hits want to land ---------- */
-// backbeat on 2 & 4 (steps 4,12) is the anchor of every dnb/jungle edit; kick on 1, with
-// syncopated kicks on the "and of 3" region (10/11) and sometimes the "a of 1" (2/3).
+// The base cut favors snares on 2 and 4 and kicks on 1 and the "and" of 3.
+// Style-specific accents are decided after the base cut.
 const WANT = { 0: 'K', 4: 'S', 12: 'S', 10: 'K', 8: null };
 function roleFit(i, pos) {
   const w = WANT[pos % SPB],
@@ -84,6 +84,10 @@ function pickBy(r, score, avoid) {
   return best;
 }
 const hatScore = i => roleScore(i, 'h') + (tailOK(i) ? 1 : -1);
+function writeHalfDrag(p, at, len, source, reverse) {
+  for (let k = 0; k < len; k++)
+    p[at + k] = { s: (source + Math.floor(k / 2)) % N, r: reverse, h: true, x: 1, p: 0 };
+}
 /* ornaments: phrase-end rolls, scattered rolls, reverses, half-speed drags, gaps. How often each one happens comes from
    the style blend (MIX, see ideas.js), scaled by the amount of scramble. The ALLOW
    toggles still switch each kind off. */
@@ -136,12 +140,12 @@ function ornament(R, p, genes, grooves) {
     const bar = 1 + Math.floor(r() * 3);
     if (grooves[bar] !== 'rollers') {
       const b0 = bar * SPB,
-        len = chance(r, 0.6) && grooves[bar] !== 'halftime' ? 8 : 4,
+        len = chance(r, 0.6) ? 8 : 4,
         pos = b0 + SPB - len;
       let s0 = p[pos].s;
       if (s0 < 0 || p[pos].x > 1 || p[pos].h) s0 = (b0 % N) + SPB - len; // slow down whatever was already playing there
       const rv = OPT.rev && chance(r, 0.3); // reversed half speed: a tape-rewind swell into the next downbeat (always ends the bar)
-      for (let k = 0; k < len; k++) p[pos + k] = { s: (s0 + Math.floor(k / 2)) % N, r: rv, h: true, x: 1, p: 0 };
+      writeHalfDrag(p, pos, len, s0, rv);
       o.push((rv ? 'rev-' : '') + 'half' + len / 2);
     }
   }
@@ -164,6 +168,109 @@ function clean(p) {
         : { ...e }
       : { ...e, x: OPT.retrig ? e.x : 1, p: OPT.pitch ? e.p : 0, r: OPT.rev ? e.r : false },
   );
+}
+
+function leadIntoFinalBar(R, p, genes, grooves) {
+  if (UI.scramble <= 0.5) return;
+  const r = R('bar 3 flourish'),
+    at = 3 * SPB - 2,
+    tail = p.slice(at, at + 2);
+  if (!chance(r, 0.8 * (2 * UI.scramble - 1)) ||
+    tail.some(e => e.s < 0 || e.h || (OPT.rev && e.r) || (OPT.retrig && e.x > 1))) return;
+
+  // Echo a short gesture from bar 4 when it fits. Longer half-speed runs need their full span.
+  const ending = p.slice(-2);
+  if (ending.every(e => e.s >= 0 && !e.h) &&
+    ending.some(e => (OPT.rev && e.r) || (OPT.retrig && e.x > 1))) {
+    p.splice(at, 2, ...ending.map(e => ({ ...e })));
+    genes.orn.push('bar 3 echoes bar 4');
+    return;
+  }
+
+  const options = [
+    ['roll', OPT.retrig ? MIX.rollEnd : 0],
+    ['reverse', OPT.rev ? MIX.rev : 0],
+    ['half', OPT.half && grooves[2] !== 'rollers' ? MIX.drag : 0],
+  ].filter(([, weight]) => weight > 0);
+  if (!options.length) return;
+  const [kind] = pickW(r, options, ([, weight]) => weight);
+  if (kind === 'roll') {
+    const snare = pickSnare(r);
+    p[at] = { ...ev(snare), x: 2 };
+    p[at + 1] = { ...ev(snare), x: 2, p: OPT.pitch && chance(r, 0.5) ? 2 : 0 };
+  } else if (kind === 'reverse') {
+    p[at + 1] = { ...tail[1], r: true };
+  } else {
+    p[at] = { ...ev(tail[0].s), h: true };
+    p[at + 1] = { ...p[at] };
+  }
+  genes.orn.push('bar 3 ' + kind);
+}
+
+function addScrambleDrag(R, p, genes, grooves) {
+  if (!OPT.half || UI.scramble <= 0.5 || p.some(e => e.h)) return;
+  const r = R('scramble drag');
+  // Give the upper half of the dial a chance independent of the style blend.
+  if (!chance(r, 0.56 * (2 * UI.scramble - 1))) return;
+  const plain = e => e.s >= 0 && !(OPT.rev && e.r) && !(OPT.retrig && e.x > 1);
+  const endings = [1, 2, 3].map(bar => ({ bar, end: (bar + 1) * SPB }))
+    .filter(({ end }) => p.slice(end - 2, end).every(plain));
+  if (!endings.length) return;
+  const { bar, end } = endings[Math.floor(r() * endings.length)],
+    source = p[end - 4].s,
+    canStretchPair = grooves[bar] !== 'rollers' && p.slice(end - 4, end - 2).every(plain) &&
+      (UI.kicks || !slices[(source + 1) % N].kickAudio),
+    len = canStretchPair && chance(r, 0.6) ? 4 : 2;
+  writeHalfDrag(p, end - len, len, p[end - len].s, OPT.rev && chance(r, 0.3));
+  genes.orn.push('half' + len / 2 + ' (bar ' + (bar + 1) + ')');
+}
+
+function swapKickSlices(R, p, selected) {
+  let changed = false;
+  const replacement = source => {
+    const r = R(`top loop:${source[0].i}:${source.length}`);
+    let found = false;
+    const start = pickBy(r, i => {
+      let fit = 0;
+      for (let k = 0; k < source.length; k++) {
+        const s = slices[i + k];
+        if (!s || s.kickAudio) return -Infinity;
+        const role = source[k].kickAudio ? (source[k].hits.kick ? 'h' : '.') : source[k].role;
+        fit += (s.role === role ? 4 : 0) - 0.2 * s.zlo;
+      }
+      found = true;
+      return fit;
+    });
+    return found ? start : null;
+  };
+  for (let i = 0; i < p.length; ) {
+    const e = p[i];
+    if (e.s < 0 || (!e.h && !slices[e.s].kickAudio)) {
+      i++;
+      continue;
+    }
+    let len = 1;
+    if (e.h) {
+      while (p[i + len]?.h && p[i + len].s === (e.s + Math.floor(len / 2)) % N) len++;
+    } else if (e.x === 1 && !e.r && !e.p) {
+      const next = p[i + 1];
+      if ((!selected || selected.has(i + 1)) && next?.s === e.s + 1 && slices[next.s].role === '.' &&
+        !next.h && next.x === 1 && !next.r && !next.p) len++;
+    }
+
+    const audioLength = e.h ? Math.ceil(len / 2) : len;
+    const source = Array.from({ length: audioLength }, (_, k) => slices[(e.s + k) % N]);
+    if ((!selected || p.slice(i, i + len).some((_, k) => selected.has(i + k))) && source.some(s => s.kickAudio)) {
+      const start = replacement(source);
+      // A hand-edited half-speed run can be longer than any kick-free source run.
+      // In that case, change its kick-bearing pairs in place.
+      const replacements = source.map((s, k) => start != null ? start + k : s.kickAudio ? replacement([s]) : s.i);
+      for (let k = 0; k < len; k++) p[i + k].s = replacements[e.h ? Math.floor(k / 2) : k];
+      changed = true;
+    }
+    i += len;
+  }
+  return changed;
 }
 function pickSnare(r) {
   const c = slices.map((s, i) => [s.snare + r() * 0.5, i]).sort((a, b) => b[0] - a[0]);
@@ -207,6 +314,9 @@ function generate(seed) {
     grooves = Array.from({ length: BARS }, (_, b) => grooveForBar(R, b)),
     p = ornament(R, applyIdeas(R, best.p, g), g, grooves);
   finishGroove(R, p, g, grooves);
+  if (!UI.kicks) swapKickSlices(R, p);
+  leadIntoFinalBar(R, p, g, grooves);
+  addScrambleDrag(R, p, g, grooves);
   return { steps: clean(p), genes: g };
 }
 
@@ -220,7 +330,7 @@ function generateBatch(batch, count, kept = []) {
   }
   // Rollers restores the beat-four snare, so it can erase the early-snare move.
   mix.snfwd *= 1 - styleShare('sRoller');
-  const moves = Object.keys(IDEA_SAY).filter(id => mix[id] >= 0.15);
+  const moves = Object.keys(IDEA_SAY).filter(id => mix[id] >= 0.15 && (UI.kicks || id !== 'kick3'));
   const target = id => count >= 8 && mix[id] >= 0.25 ? 2 : 1;
   const recipe = steps => ({ key: toStr(steps), ideas: detectIdeas(steps) });
   const keptRecipes = kept.map(recipe);

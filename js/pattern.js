@@ -8,8 +8,7 @@ const tok = e =>
       (e.r ? 'r' : '') +
       (e.h ? 'h' : '') +
       (e.x > 1 ? 'x' + e.x : '') +
-      (e.p ? (e.p > 0 ? '+' : '') + e.p : '') +
-      (e.v ? 'v' + (e.v > 0 ? '+' : '') + e.v : ''); // level in dB: 12v-6 is slice 12, 6 dB down
+      (e.p ? (e.p > 0 ? '+' : '') + e.p : '');
 function toStr(p) {
   return p.map((e, i) => (i && i % SPB === 0 ? '| ' : '') + tok(e)).join(' ');
 }
@@ -21,11 +20,10 @@ function parse(str) {
       out.push({ s: -1 });
       continue;
     }
-    const m = t.match(/^(\d+)(r)?(h)?(?:x(\d))?([+-]\d+)?(?:v([+-]?\d+))?$/);
+    // Accept older saved and pasted patterns with per-slice gain.
+    const m = t.match(/^(\d+)(r)?(h)?(?:x(\d))?([+-]\d+)?(?:v[+-]?\d+)?$/);
     if (!m) throw Error('bad token ' + t);
-    const e = { s: +m[1], r: !!m[2], h: !!m[3], x: +(m[4] || 1), p: +(m[5] || 0) };
-    if (m[6]) e.v = +m[6];
-    out.push(e);
+    out.push({ s: +m[1], r: !!m[2], h: !!m[3], x: +(m[4] || 1), p: +(m[5] || 0) });
   }
   return out;
 }
