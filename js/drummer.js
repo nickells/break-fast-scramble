@@ -135,9 +135,7 @@
   const FRAME_MS = 1000 / 30, // a frame of the footage
     DRAW_MS = 1000 / 24; // one of his drawings
 
-  /* one sway of the listening loop, as drawing ids (sprite cells). The animator's loop (frames 427-451) also bounces
-     the bass drum on the beat (drawings 82 83 86 87 88); idle shouldn't look like a kick, so only the drawings with
-     a still drum, going one way and back. */
+  /* one sway of the listening loop, as drawing ids (sprite cells), going one way and back */
   const SWAY = [80, 81, 81, 81, 80, 84, 84, 84, 84, 85, 85, 85, 85, 84, 84, 84, 84];
 
   const img = new Image();
@@ -273,6 +271,9 @@
     [115, 141, 33, 32], [116, 142, 31, 30], [115, 141, 35, 34], [116, 141, 33, 32], [116, 141, 33, 32],
     [116, 142, 31, 30], [116, 141, 33, 32]
   ];
+  // The original hand poses already contain bass drum bounces. Use a single resting drum
+  // underneath every pose, so only the sequencer's kick events can make it swell.
+  const REST_DRUM = 4;
   const KICK_GROW = 0.06; // how much the bass drum swells on a kick
   let hitKey = '',
     cur = null, // hands: { t0, hits: [{ t, dur, v, rev }] }  times in ms
@@ -466,28 +467,30 @@
     const sx = (k % COLS) * FW,
       sy = Math.floor(k / COLS) * FH;
     g.drawImage(img, sx, sy, FW, FH, x0, y0, w, h);
-    // kick: only the bass drum swells, down and out from its rim, where his body and the stands meet it (so they stay
-    // put). Its oval is wiped, with room for the swell and its line, and the drum redrawn larger in it.
-    if (thump > 0) {
-      const [cx, cy, rx, ry] = DRUM[k],
-        grow = 1 + KICK_GROW * thump,
-        ex = x0 + cx * s,
-        rim = y0 + (cy - ry) * s,
-        pad = 3 * s;
-      g.save();
-      g.beginPath();
-      g.ellipse(ex, rim + ry * s * grow, rx * s * grow + pad, ry * s * grow + pad, 0, 0, 2 * Math.PI);
-      g.clip();
-      g.globalCompositeOperation = 'source-over';
-      g.fillStyle = bg;
-      g.fillRect(0, 0, cv.width, cv.height);
-      g.globalCompositeOperation = 'multiply';
-      g.translate(ex, rim);
-      g.scale(grow, grow);
-      g.translate(-ex, -rim);
-      g.drawImage(img, sx, sy, FW, FH, x0, y0, w, h);
-      g.restore();
-    }
+    const [cx, cy, rx, ry] = DRUM[k],
+      [restX, restY, restRx, restRy] = DRUM[REST_DRUM],
+      grow = 1 + KICK_GROW * thump,
+      rim = restY - restRy,
+      left = Math.min(cx - rx, restX - restRx * grow),
+      right = Math.max(cx + rx, restX + restRx * grow),
+      top = Math.min(cy - ry, rim),
+      bottom = Math.max(cy + ry, rim + 2 * restRy * grow),
+      pad = 5 * s;
+    g.save();
+    g.beginPath();
+    g.ellipse(x0 + (left + right) * s / 2, y0 + (top + bottom) * s / 2,
+      (right - left) * s / 2 + pad, (bottom - top) * s / 2 + pad, 0, 0, 2 * Math.PI);
+    g.clip();
+    g.globalCompositeOperation = 'source-over';
+    g.fillStyle = bg;
+    g.fillRect(0, 0, cv.width, cv.height);
+    g.globalCompositeOperation = 'multiply';
+    // Swell down from the top rim, where the drum meets his body.
+    g.translate(x0 + restX * s, y0 + rim * s);
+    g.scale(grow, grow);
+    g.translate(-x0 - restX * s, -y0 - rim * s);
+    g.drawImage(img, (REST_DRUM % COLS) * FW, Math.floor(REST_DRUM / COLS) * FH, FW, FH, x0, y0, w, h);
+    g.restore();
     g.globalCompositeOperation = 'source-over';
   }
 
